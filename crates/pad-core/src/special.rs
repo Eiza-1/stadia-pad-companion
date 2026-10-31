@@ -6,7 +6,7 @@ use crate::settings::{AssistantAction, CaptureAction, StadiaAction};
 pub const CAPTURE_HOLD_MS: u64 = 500;
 pub const STADIA_HOLD_MS: u64 = 1000;
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub enum Action {
     OpenGemini,
     Screenshot,
