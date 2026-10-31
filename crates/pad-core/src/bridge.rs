@@ -8,7 +8,10 @@ use crate::settings::Settings;
 use crate::special::{Action, Special};
 use crate::stats::{Stats, StatsSnapshot};
 use crate::win::hid::{enumerate_stadia, now_us, usb_stadia_present, HidDevice};
-use crate::win::{hidhide, procs, vigem::VirtualPad};
+use crate::settings::PadMode;
+use crate::win::ble::{self, LowLatency};
+use crate::win::perf::CompetitiveGuard;
+use crate::win::{hidhide, procs, rate, vigem::VirtualPad};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::Sender;
@@ -233,8 +236,72 @@ impl Drop for BridgeHandle {
     }
 }
 
+/// Competitive-mode resources for one session; rebuilt whenever the mode settings change.
+#[derive(Default)]
+struct Perf {
+    guard: Option<CompetitiveGuard>,
+    low_latency: Option<LowLatency>,
+}
+
+impl Perf {
+    fn apply(&mut self, s: &Settings, dev: &DeviceInfo) -> LowLatencyState {
+        let competitive = s.pad_mode == PadMode::Competitive;
+        match (competitive, self.guard.is_some()) {
+            (true, false) => self.guard = Some(CompetitiveGuard::enter()),
+            (false, true) => self.guard = None,
+            _ => {}
+        }
+        let want_ll = competitive && s.ble_low_latency;
+        let addr = ble::bt_addr_from_path(&dev.path).filter(|_| dev.transport == Transport::Bluetooth);
+        if !ble::low_latency_supported() {
+            return LowLatencyState::Unsupported;
+        }
+        match (want_ll, addr) {
+            (true, Some(a)) => {
+                if self.low_latency.is_none() {
+                    match LowLatency::request(a) {
+                        Ok(ll) => self.low_latency = Some(ll),
+                        Err(state) => return state,
+                    }
+                }
+                LowLatencyState::Active
+            }
+            _ => {
+                self.low_latency = None;
+                LowLatencyState::Off
+            }
+        }
+    }
+}
+
+/// Reads the BLE battery level on connect and every 60 s, off the input thread (GATT reads can take 100s of ms).
+fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
+    let sh = sh.clone();
+    thread::Builder::new()
+        .name("pad-battery".into())
+        .spawn(move || {
+            com_init();
+            while alive.load(Ordering::Relaxed) {
+                let level = ble::battery(addr);
+                if alive.load(Ordering::Relaxed) && lock(&sh.status).battery != level {
+                    sh.set_status(|s| s.battery = level);
+                }
+                thread::park_timeout(Duration::from_secs(60));
+            }
+        })
+        .ok()
+}
+
+fn com_init() {
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+}
+
 fn run(sh: Arc<Shared>) {
     log!("bridge started");
+    com_init();
     if hidhide::installed() && !hidhide::ensure_app_registered() {
         log!("HidHide did not whitelist us; a hidden pad will not be found");
     }
@@ -245,10 +312,16 @@ fn run(sh: Arc<Shared>) {
             mapper_check = now + 30_000_000;
             let others = procs::other_mappers();
             let hh = hidhide::installed();
-            if lock(&sh.status).other_mappers != others || lock(&sh.status).hidhide_ok != hh {
+            let rate_ok = rate::override_driver_present();
+            let changed = {
+                let st = lock(&sh.status);
+                st.other_mappers != others || st.hidhide_ok != hh || st.rate_override_available != rate_ok
+            };
+            if changed {
                 sh.set_status(|s| {
                     s.other_mappers = others;
                     s.hidhide_ok = hh;
+                    s.rate_override_available = rate_ok;
                 });
             }
         }
@@ -301,12 +374,20 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let mut stats = Stats::new(1024);
     let mut reader = input.reader(4).map_err(io)?;
     let mut hide = settings.hide_from_games;
+    let mut perf = Perf::default();
+    let ll_state = perf.apply(&settings, dev);
+
+    let battery_alive = Arc::new(AtomicBool::new(true));
+    let battery_thread = ble::bt_addr_from_path(&dev.path)
+        .filter(|_| dev.transport == Transport::Bluetooth)
+        .and_then(|a| spawn_battery(sh, a, battery_alive.clone()));
 
     log!("connected {:?} {}", dev.transport, dev.instance_id);
     sh.set_status(|s| {
         s.vigem_ok = true;
         s.connection = Some(dev.transport);
         s.charging = dev.transport == Transport::Usb;
+        s.ble_low_latency = ll_state;
     });
 
     let mut last_state = PadState::default();
@@ -320,6 +401,10 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             let s = lock(&sh.settings).clone();
             mapper.set(s.active().clone(), s.pad_mode, s.stadia);
             special.set(s.assistant, s.capture, s.stadia);
+            let ll = perf.apply(&s, dev);
+            if lock(&sh.status).ble_low_latency != ll {
+                sh.set_status(|st| st.ble_low_latency = ll);
+            }
             if s.hide_from_games != hide {
                 hide = s.hide_from_games;
                 if hide {
@@ -378,11 +463,20 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     }
     drop(reader);
     drop(pad);
+    drop(perf);
+    // Not joined: a GATT read in flight may take seconds; the thread checks `alive` before touching status.
+    battery_alive.store(false, Ordering::Relaxed);
+    if let Some(t) = battery_thread {
+        t.thread().unpark();
+    }
     log!("disconnected {:?}", dev.transport);
     sh.set_status(|s| {
         s.connection = None;
         s.battery = None;
         s.charging = false;
+        if s.ble_low_latency == LowLatencyState::Active {
+            s.ble_low_latency = LowLatencyState::Off;
+        }
     });
     result.or_else(|e| if sh.stopping() { Ok(()) } else { Err(e) })
 }

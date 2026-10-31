@@ -1,4 +1,4 @@
-//! Tiny append-only log in %LOCALAPPDATA%\PadCompanion\padcompanion.log, rotated at 1 MB.
+//! Tiny append-only log in %LOCALAPPDATA%\PadCompanion\log.txt, rotated at 1 MB.
 
 use std::io::Write;
 use std::sync::Mutex;
@@ -11,9 +11,9 @@ pub fn write(msg: &str) {
     let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let dir = crate::settings::Settings::data_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let path = dir.join("padcompanion.log");
+    let path = dir.join("log.txt");
     if std::fs::metadata(&path).map_or(false, |m| m.len() > MAX_BYTES) {
-        let _ = std::fs::rename(&path, dir.join("padcompanion.old.log"));
+        let _ = std::fs::rename(&path, dir.join("log.old.txt"));
     }
     let secs = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
