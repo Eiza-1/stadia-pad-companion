@@ -14,7 +14,7 @@ use crate::win::perf::CompetitiveGuard;
 use crate::win::{hidhide, procs, rate, vigem::VirtualPad};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
-use std::sync::mpsc::Sender;
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -106,6 +106,8 @@ struct Shared {
     stop: AtomicBool,
     rumble_pct: AtomicU8,
     hidden: Mutex<Vec<String>>,
+    /// Actions run on their own thread so launching Edge or SendInput never stalls input.
+    actions: Mutex<Sender<Action>>,
     thread: Mutex<Option<thread::Thread>>,
 }
 
@@ -176,6 +178,7 @@ impl Bridge {
             sub: Mutex::new(None),
             stop: AtomicBool::new(false),
             hidden: Mutex::new(Vec::new()),
+            actions: Mutex::new(spawn_action_worker()),
             thread: Mutex::new(None),
         });
         let sh = shared.clone();
@@ -290,6 +293,21 @@ fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<
             }
         })
         .ok()
+}
+
+/// Runs special-button actions; ends when the bridge's sender is dropped.
+fn spawn_action_worker() -> Sender<Action> {
+    let (tx, rx) = mpsc::channel::<Action>();
+    let _ = thread::Builder::new().name("pad-actions".into()).spawn(move || {
+        use windows::Win32::System::Com::{CoInitializeEx, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE};
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+        }
+        for a in rx {
+            crate::win::actions::run(a);
+        }
+    });
+    tx
 }
 
 fn com_init() {
@@ -438,6 +456,9 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         };
         for a in actions {
             log!("action {a:?}");
+            if a != Action::OpenCompanion {
+                let _ = lock(&sh.actions).send(a);
+            }
             sh.emit(BridgeEvent::Action(a));
         }
 

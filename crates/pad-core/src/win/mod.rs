@@ -6,5 +6,6 @@ pub mod log;
 pub mod perf;
 pub mod procs;
 pub mod rate;
+pub mod actions;
 pub mod ble;
 pub mod vigem;
