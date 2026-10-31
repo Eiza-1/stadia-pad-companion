@@ -129,6 +129,9 @@ fn main() {
             let settings_path = Settings::default_path();
             let settings = Settings::load(&settings_path);
             let start_with_windows = settings.start_with_windows;
+            // Re-apply every start: an upgrade runs the old uninstaller (which removes the Run value),
+            // and a moved install changes the exe path.
+            pad_core::win::autostart::set(start_with_windows);
             let bridge = Bridge::start(settings);
             bridge.set_live(false);
             let (tx, rx) = mpsc::channel();

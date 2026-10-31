@@ -7,7 +7,7 @@ use crate::report::{parse_input, rumble_report, PadState};
 use crate::settings::Settings;
 use crate::special::{Action, Special};
 use crate::stats::{Stats, StatsSnapshot};
-use crate::win::hid::{enumerate_stadia, now_us, usb_stadia_present, HidDevice};
+use crate::win::hid::{enumerate_stadia, now_us, stadia_instance_ids, usb_stadia_present, HidDevice};
 use crate::settings::PadMode;
 use crate::win::ble::{self, LowLatency};
 use crate::win::perf::CompetitiveGuard;
@@ -38,6 +38,33 @@ pub fn choose_device(devs: &[DeviceInfo]) -> Option<&DeviceInfo> {
 }
 
 /// `\\?\hid#vid_18d1&pid_9400&mi_01#7&abc&0&0000#{guid}` → `HID\VID_18D1&PID_9400&MI_01\7&ABC&0&0000`
+/// Every Stadia device present is hidden, not just the one in use: a pad both cabled and paired
+/// exposes two HID devices, and Steam would show the unused one next to the Xbox pad.
+pub fn ids_to_hide(devs: &[DeviceInfo]) -> Vec<String> {
+    devs.iter().map(|d| d.instance_id.clone()).collect()
+}
+
+/// Remembers a refused BLE low-latency request so settings saves don't re-run the blocking request on
+/// the input thread; a different pad (reconnect) or toggling the setting retries.
+#[derive(Default)]
+struct LlRetry {
+    refused_for: Option<Option<u64>>,
+    asked: Option<u64>,
+}
+
+impl LlRetry {
+    fn should_request(&mut self, addr: Option<u64>) -> bool {
+        self.asked = addr;
+        self.refused_for != Some(addr)
+    }
+    fn failed(&mut self) {
+        self.refused_for = Some(self.asked);
+    }
+    fn reset(&mut self) {
+        self.refused_for = None;
+    }
+}
+
 pub fn to_instance_id(path: &str) -> String {
     let p = path.strip_prefix(r"\\?\").unwrap_or(path);
     let p = p.rfind("#{").map_or(p, |g| &p[..g]);
@@ -106,6 +133,8 @@ struct Shared {
     stop: AtomicBool,
     rumble_pct: AtomicU8,
     hidden: Mutex<Vec<String>>,
+    /// Ids HidHide refused to hide this run; not retried every second.
+    hide_failed: Mutex<Vec<String>>,
     /// Actions run on their own thread so launching Edge or SendInput never stalls input.
     actions: Mutex<Sender<Action>>,
     thread: Mutex<Option<thread::Thread>>,
@@ -153,20 +182,29 @@ impl Shared {
         }
     }
 
-    fn hide(&self, id: &str) {
-        if hidhide::ensure_hidden(&[id.to_string()]) {
-            let mut h = lock(&self.hidden);
-            if !h.iter().any(|x| x == id) {
-                h.push(id.to_string());
-            }
+    /// Hides the given pads from games (only ids not already hidden by us this run).
+    fn hide(&self, ids: &[String]) {
+        let new: Vec<String> = {
+            let (h, f) = (lock(&self.hidden), lock(&self.hide_failed));
+            ids.iter().filter(|id| !h.contains(id) && !f.contains(id)).cloned().collect()
+        };
+        if new.is_empty() {
+            return;
+        }
+        if hidhide::ensure_hidden(&new) {
+            lock(&self.hidden).extend(new);
         } else {
-            log!("could not hide {id} from games");
+            log!("could not hide {new:?} from games");
+            lock(&self.hide_failed).extend(new);
         }
     }
 
+    /// Gives every Stadia pad back to other apps, including entries left by a crash or another tool.
     fn unhide_all(&self) {
         let ids = std::mem::take(&mut *lock(&self.hidden));
+        lock(&self.hide_failed).clear();
         hidhide::unhide(&ids);
+        hidhide::unhide_all_stadia();
     }
 }
 
@@ -182,6 +220,7 @@ impl Bridge {
             sub: Mutex::new(None),
             stop: AtomicBool::new(false),
             hidden: Mutex::new(Vec::new()),
+            hide_failed: Mutex::new(Vec::new()),
             actions: Mutex::new(spawn_action_worker()),
             live: AtomicBool::new(true),
             writer: Mutex::new(None),
@@ -268,6 +307,7 @@ impl Drop for BridgeHandle {
 struct Perf {
     guard: Option<CompetitiveGuard>,
     low_latency: Option<LowLatency>,
+    retry: LlRetry,
 }
 
 impl Perf {
@@ -286,15 +326,22 @@ impl Perf {
         match (want_ll, addr) {
             (true, Some(a)) => {
                 if self.low_latency.is_none() {
+                    if !self.retry.should_request(Some(a)) {
+                        return LowLatencyState::Off;
+                    }
                     match LowLatency::request(a) {
                         Ok(ll) => self.low_latency = Some(ll),
-                        Err(state) => return state,
+                        Err(state) => {
+                            self.retry.failed();
+                            return state;
+                        }
                     }
                 }
                 LowLatencyState::Active
             }
             _ => {
                 self.low_latency = None;
+                self.retry.reset();
                 LowLatencyState::Off
             }
         }
@@ -348,6 +395,7 @@ fn run(sh: Arc<Shared>) {
         log!("HidHide did not whitelist us; a hidden pad will not be found");
     }
     let mut mapper_check = 0u64;
+    let mut released_for_missing_vigem = false;
     while !sh.stopping() {
         let now = now_us();
         if now >= mapper_check {
@@ -372,6 +420,11 @@ fn run(sh: Arc<Shared>) {
             Some(dev) => {
                 if let Err(e) = session(&sh, &dev) {
                     log!("session ended: {e:?}");
+                    // No virtual pad possible: give the real pad back (once) so the user still has a controller.
+                    if e == BridgeError::VigemMissing && !released_for_missing_vigem {
+                        released_for_missing_vigem = true;
+                        sh.unhide_all();
+                    }
                     sh.set_status(|s| s.vigem_ok = e != BridgeError::VigemMissing);
                     sh.idle(Duration::from_secs(if e == BridgeError::VigemMissing { 5 } else { 1 }));
                 }
@@ -386,9 +439,6 @@ fn run(sh: Arc<Shared>) {
 fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let io = |e: std::io::Error| BridgeError::Io(e.to_string());
     let settings = lock(&sh.settings).clone();
-    if settings.hide_from_games {
-        sh.hide(&dev.instance_id);
-    }
 
     let input = HidDevice::open_shared(&dev.path).map_err(io)?;
     let writer = Arc::new(HidDevice::open_writer(&dev.path).map_err(io)?);
@@ -411,12 +461,18 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             log!("rumble write failed: {}; further failures not logged", std::io::Error::last_os_error());
         }
     })?;
+    // Hide only once the virtual pad exists: without ViGEm the user keeps the real pad (Steam can still use it).
+    let mut hide = settings.hide_from_games;
+    if hide {
+        sh.hide(&ids_to_hide(&enumerate_stadia()));
+    } else {
+        hidhide::unhide_all_stadia();
+    }
 
     let mut mapper = Mapper::new(settings.active().clone(), settings.pad_mode, settings.stadia);
     let mut special = Special::new(settings.assistant, settings.capture, settings.stadia);
     let mut stats = Stats::new(1024);
     let mut reader = input.reader(4).map_err(io)?;
-    let mut hide = settings.hide_from_games;
     let mut perf = Perf::default();
     let ll_state = perf.apply(&settings, dev);
 
@@ -451,7 +507,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             if s.hide_from_games != hide {
                 hide = s.hide_from_games;
                 if hide {
-                    sh.hide(&dev.instance_id);
+                    sh.hide(&ids_to_hide(&enumerate_stadia()));
                 } else {
                     sh.unhide_all();
                 }
@@ -493,6 +549,10 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             if sh.subscribed() {
                 sh.emit(BridgeEvent::Stats(stats.snapshot()));
             }
+            // A second transport came up (e.g. Bluetooth while cabled): hide it too.
+            if hide {
+                sh.hide(&stadia_instance_ids());
+            }
             // A cable plugged in while on Bluetooth: switch to USB (the outer loop picks it).
             if dev.transport == Transport::Bluetooth
                 && usb_stadia_present()
@@ -504,12 +564,13 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         }
     };
 
+    *lock(&sh.writer) = None;
+    drop(reader);
+    // Drop the virtual pad first (joins the rumble thread), so no late rumble lands after the stop.
+    drop(pad);
     if out_len > 0 {
         writer.write_output(&rumble_report(0, 0, out_len));
     }
-    *lock(&sh.writer) = None;
-    drop(reader);
-    drop(pad);
     drop(perf);
     // Not joined: a GATT read in flight may take seconds; the thread checks `alive` before touching status.
     battery_alive.store(false, Ordering::Relaxed);
@@ -553,5 +614,23 @@ mod tests {
             to_instance_id(r"\\?\hid#vid_18d1&pid_9400&mi_01#7&abc&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}"),
             r"HID\VID_18D1&PID_9400&MI_01\7&ABC&0&0000"
         );
+    }
+
+    #[test]
+    fn hides_every_transport_not_just_the_chosen_one() {
+        let d = [dev("bt", Transport::Bluetooth), dev("usb", Transport::Usb)];
+        assert_eq!(ids_to_hide(&d), vec!["bt".to_string(), "usb".to_string()]);
+    }
+
+    #[test]
+    fn low_latency_not_retried_until_inputs_change() {
+        let mut r = LlRetry::default();
+        assert!(r.should_request(Some(1)));
+        r.failed();
+        assert!(!r.should_request(Some(1)), "a settings save must not re-block input on a refused request");
+        assert!(r.should_request(Some(2)), "a new pad / reconnect retries");
+        r.failed();
+        r.reset();
+        assert!(r.should_request(Some(2)), "toggling the setting retries");
     }
 }

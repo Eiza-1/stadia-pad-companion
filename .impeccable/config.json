@@ -1,0 +1,23 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "roboto",
+        "createdAt": "2026-10-31T06:39:53.272Z",
+        "reason": "user asked for Material You design and fonts; Roboto Flex is the Material type family"
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          "app/ui/index.html"
+        ],
+        "createdAt": "2026-10-31T06:39:53.608Z",
+        "reason": "builder: pulse only shows on the connection pill while a pad is actually connected (live status)"
+      }
+    ]
+  }
+}

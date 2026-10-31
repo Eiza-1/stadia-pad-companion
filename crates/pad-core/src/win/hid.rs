@@ -258,3 +258,8 @@ impl Drop for OverlappedReader<'_> {
 pub fn usb_stadia_present() -> bool {
     hid_interface_paths().iter().any(|p| is_stadia(p) && !p.to_ascii_lowercase().contains("{00001812-"))
 }
+
+/// Instance ids of every present Stadia HID interface (no handles opened; cheap enough for a 1 s check).
+pub fn stadia_instance_ids() -> Vec<String> {
+    hid_interface_paths().iter().filter(|p| is_stadia(p)).map(|p| to_instance_id(p)).collect()
+}

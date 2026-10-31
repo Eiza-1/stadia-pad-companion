@@ -1,9 +1,11 @@
 //! Drives Nefarius HidHide through its CLI so games and launchers only see the virtual Xbox 360 pad.
-//! Our own exe is whitelisted so it can still read the real pad. Elevates once only if a plain call isn't enough.
+//! Our own exe is whitelisted so it can still read the real pad. Asks for admin only if a plain call
+//! isn't enough, and never again in this run once the user declines.
 
 use crate::log;
 use std::os::windows::process::CommandExt;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::process::{Command, Stdio};
 use windows::core::{w, HSTRING, PCWSTR};
 use windows::Win32::Foundation::CloseHandle;
@@ -58,12 +60,12 @@ fn unhide_args(ids: &[String]) -> Vec<String> {
     ids.iter().flat_map(|id| ["--dev-unhide".to_string(), id.clone()]).collect()
 }
 
-fn run(args: &[String], elevated: bool) {
-    let Some(cli) = cli() else { return };
+fn run(args: &[String], elevated: bool) -> bool {
+    let Some(cli) = cli() else { return false };
     if !elevated {
         let r = Command::new(&cli).args(args).creation_flags(CREATE_NO_WINDOW).stdin(Stdio::null()).output();
         log!("HidHide {args:?} -> {:?}", r.map(|o| o.status.code()));
-        return;
+        return true;
     }
     let params = args.iter().map(|a| format!("\"{a}\"")).collect::<Vec<_>>().join(" ");
     let file = HSTRING::from(cli.as_os_str());
@@ -85,10 +87,44 @@ fn run(args: &[String], elevated: bool) {
                     let _ = CloseHandle(info.hProcess);
                 }
                 log!("HidHide (admin) {args:?} done");
+                true
             }
-            Err(e) => log!("HidHide elevation declined or failed: {e}"),
+            Err(e) => {
+                log!("HidHide elevation declined or failed: {e}");
+                false
+            }
         }
     }
+}
+
+/// Remembers a declined admin prompt so retries (reconnects, BLE wake, driver-missing loops) never re-show it.
+pub struct ElevationGate(AtomicBool);
+
+impl ElevationGate {
+    pub const fn new() -> Self {
+        ElevationGate(AtomicBool::new(false))
+    }
+    pub fn may_ask(&self) -> bool {
+        !self.0.load(Ordering::Relaxed)
+    }
+    pub fn declined(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
+
+static GATE: ElevationGate = ElevationGate::new();
+
+/// One elevated attempt, unless the user already declined this run. `check` confirms it worked.
+fn elevate(args: &[String], check: impl Fn() -> bool) -> bool {
+    if !GATE.may_ask() {
+        return false;
+    }
+    if run(args, true) && check() {
+        return true;
+    }
+    log!("admin change not made; not asking again until restart");
+    GATE.declined();
+    false
 }
 
 fn is_configured(ids: &[String]) -> bool {
@@ -111,9 +147,8 @@ pub fn ensure_hidden(ids: &[String]) -> bool {
     if is_configured(ids) {
         return true;
     }
-    log!("HidHide refused unelevated change, requesting admin once");
-    run(&args, true);
-    is_configured(ids)
+    log!("HidHide refused unelevated change, requesting admin");
+    elevate(&args, || is_configured(ids))
 }
 
 /// Whitelist this exe so it can still open a pad hidden earlier (by us or another tool).
@@ -131,8 +166,7 @@ pub fn ensure_app_registered() -> bool {
     if contains(&query("--app-list"), &me) {
         return true;
     }
-    run(&args, true);
-    contains(&query("--app-list"), &me)
+    elevate(&args, || contains(&query("--app-list"), &me))
 }
 
 /// Stadia instance ids (USB or Bluetooth LE) in `HidHideCLI --dev-list` output.
@@ -153,14 +187,22 @@ pub fn cleanup() {
     if !installed() {
         return;
     }
-    let ids = stadia_ids_in_dev_list(&query("--dev-list"));
-    unhide(&ids);
+    unhide_all_stadia();
     run(&["--app-unreg".into(), self_path()], false);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn admin_prompt_not_repeated_after_user_declines() {
+        let g = ElevationGate::new();
+        assert!(g.may_ask());
+        assert!(g.may_ask(), "an accepted prompt doesn't block later ones (Quit must be able to un-hide)");
+        g.declined();
+        assert!(!g.may_ask(), "a declined prompt is never re-shown on retries this run");
+    }
 
     #[test]
     fn finds_hidden_stadia_ids_only() {
@@ -182,8 +224,19 @@ pub fn unhide(ids: &[String]) {
     }
     let args = unhide_args(ids);
     run(&args, false);
-    let devs = query("--dev-list");
-    if ids.iter().any(|id| contains(&devs, id)) {
-        run(&args, true);
+    let still_hidden = || {
+        let devs = query("--dev-list");
+        ids.iter().any(|id| contains(&devs, id))
+    };
+    if still_hidden() {
+        elevate(&args, || !still_hidden());
+    }
+}
+
+/// Un-hides every Stadia pad in HidHide's list, connected or not (hiding turned off, or a stale
+/// entry left by a crash or shutdown).
+pub fn unhide_all_stadia() {
+    if installed() {
+        unhide(&stadia_ids_in_dev_list(&query("--dev-list")));
     }
 }
