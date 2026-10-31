@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pad Companion</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="stylesheet" href="css/pages.css">
+  <script type="module" src="js/main.js"></script>
+</head>
+<body>
+  <div class="amb" aria-hidden="true"><b></b><b></b><img class="logo" src="assets/stadia.svg" alt=""></div>
+
+  <!-- shared SVG paint servers for every pad drawing -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <radialGradient id="padShade" cx="50%" cy="22%" r="85%"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>
+      <radialGradient id="padCap" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></radialGradient>
+      <filter id="padSoft" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="14" stdDeviation="14" flood-opacity=".45"/></filter>
+    </defs>
+  </svg>
+
+  <header class="bar" data-tauri-drag-region>
+    <div class="brand"><img src="assets/stadia.svg" alt="">Pad Companion</div>
+    <button class="home" id="homeBtn"><span class="ms">home</span>Home</button>
+    <div class="tab">Stadia Controller<button class="ib" id="tabClose" aria-label="Back to Home"><span class="ms">close</span></button></div>
+    <div class="grow" data-tauri-drag-region></div>
+    <div class="svc" id="svc" title="Controller service">ON<i></i></div>
+    <button class="ib" id="settingsBtn" aria-label="Other settings" title="Settings"><span class="ms">settings</span></button>
+    <div class="win">
+      <button class="ib" id="winMin" aria-label="Minimize"><span class="ms">remove</span></button>
+      <button class="ib" id="winMax" aria-label="Maximize"><span class="ms">crop_square</span></button>
+      <button class="ib close" id="winClose" aria-label="Close to tray"><span class="ms">close</span></button>
+    </div>
+  </header>
+
+  <div class="banners" id="banners"></div>
+
+  <!-- ============ HOME ============ -->
+  <section class="view" id="homeV">
+    <div class="devcard">
+      <div class="stage" id="stage" role="button" tabindex="0" aria-label="Configure the controller">
+        <div class="padwrap" id="pw">
+          <svg class="home-pad cur"></svg>
+          <svg class="home-pad next"></svg>
+        </div>
+        <div class="hint">Click the pad to configure</div>
+      </div>
+      <div class="meta">
+        <h2>Stadia Controller</h2>
+        <div class="row">
+          <div class="conn">
+            <div class="cpill" id="connPill"><span class="ms" id="connIco">link_off</span><span id="connTxt">Not connected</span></div>
+            <div class="cpill" id="battPill" hidden><span class="ms" id="battIco">battery_full</span><span id="battTxt"></span></div>
+          </div>
+          <div class="tools">
+            <button class="ib" id="palBtn" aria-label="Pad colour" title="Pad colour"><span class="ms">palette</span></button>
+          </div>
+        </div>
+        <div class="subhint" id="connHint" hidden>Plug in the cable, or hold Stadia + Y for 2 s to pair over Bluetooth.</div>
+        <div class="palette" id="pal" role="listbox" aria-label="Pad colour"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DEVICE ============ -->
+  <section class="view" id="devV">
+    <aside class="side">
+      <div class="devhead"><div><small><span class="ms" id="dhConnIco">link_off</span><span id="dhConn">Not connected</span></small><b>Stadia Controller</b></div></div>
+      <button class="prof" id="profChip"><span id="profName">Profile · Default</span><span class="ms">chevron_right</span></button>
+      <div class="sec">Controller</div>
+      <button class="nav on" data-p="mapping"><span class="ms">gamepad</span>Button mapping</button>
+      <button class="nav" data-p="special"><span class="ms">auto_awesome</span>Special buttons</button>
+      <button class="nav" data-p="performance"><span class="ms">speed</span>Performance</button>
+      <button class="nav" data-p="sticks"><span class="ms">joystick</span>Sticks &amp; triggers</button>
+      <button class="nav" data-p="rumble"><span class="ms">vibration</span>Rumble</button>
+      <button class="nav" data-p="profiles"><span class="ms">bookmarks</span>Profiles</button>
+      <button class="nav" data-p="other"><span class="ms">tune</span>Other settings</button>
+      <div class="grow"></div>
+      <button class="foot" id="bugBtn"><span class="ms">bug_report</span>Report a bug</button>
+    </aside>
+    <div class="content">
+      <div class="page on" id="p-mapping"></div>
+      <div class="page" id="p-special"></div>
+      <div class="page" id="p-performance"></div>
+      <div class="page" id="p-sticks"></div>
+      <div class="page" id="p-rumble"></div>
+      <div class="page" id="p-profiles"></div>
+      <div class="page" id="p-other"></div>
+    </div>
+  </section>
+
+  <div class="toast" id="toast" role="status"><span class="ms">check_circle</span><span></span></div>
+</body>
+</html>

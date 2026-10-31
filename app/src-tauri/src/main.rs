@@ -1,0 +1,152 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+//! Pad Companion: tray app around the always-on controller bridge. The settings window is created on
+//! demand and destroyed on close, so WebView2 costs nothing while you play.
+
+mod ipc;
+mod tray;
+
+use pad_core::bridge::{Bridge, BridgeEvent, BridgeHandle};
+use pad_core::settings::Settings;
+use pad_core::special::Action;
+use std::path::PathBuf;
+use std::sync::{mpsc, Mutex};
+use tauri::{AppHandle, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+
+pub struct AppState {
+    bridge: Mutex<Option<BridgeHandle>>,
+    pub settings_path: PathBuf,
+}
+
+impl AppState {
+    pub fn with_bridge<T>(&self, f: impl FnOnce(&BridgeHandle) -> T) -> Option<T> {
+        self.bridge.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(f)
+    }
+}
+
+/// Shows the window, creating it if needed. Safe to call from any thread.
+pub fn open_window(app: &AppHandle) {
+    let handle = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = handle.get_webview_window("main") {
+            let _ = w.unminimize();
+            let _ = w.show();
+            let _ = w.set_focus();
+            return;
+        }
+        let built = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
+            .title("Pad Companion")
+            .decorations(false)
+            .inner_size(1280.0, 800.0)
+            .min_inner_size(1100.0, 700.0)
+            .center()
+            .background_color(tauri::window::Color(14, 15, 18, 255))
+            .build();
+        match built {
+            Ok(w) => {
+                handle.state::<AppState>().with_bridge(|b| b.set_live(true));
+                let h = handle.clone();
+                w.on_window_event(move |e| {
+                    if let WindowEvent::Destroyed = e {
+                        h.state::<AppState>().with_bridge(|b| b.set_live(false));
+                    }
+                });
+            }
+            Err(e) => pad_core::log!("window create failed: {e}"),
+        }
+    });
+}
+
+/// Tray Quit: stop the bridge (removes the virtual pad, un-hides the real one), then exit.
+pub fn quit(app: &AppHandle) {
+    let bridge = app.state::<AppState>().bridge.lock().unwrap_or_else(|e| e.into_inner()).take();
+    if let Some(b) = bridge {
+        b.stop();
+    }
+    app.exit(0);
+}
+
+/// Forwards bridge events: status to the tray always; live data to the window only while it exists.
+fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
+    std::thread::Builder::new()
+        .name("ui-dispatch".into())
+        .spawn(move || {
+            for ev in rx {
+                let window = app.get_webview_window("main");
+                match ev {
+                    BridgeEvent::Status(s) => {
+                        tray::set_status(&app, &s);
+                        if let Some(w) = window {
+                            let _ = w.emit("status", s);
+                        }
+                    }
+                    BridgeEvent::Action(Action::OpenCompanion) => open_window(&app),
+                    BridgeEvent::Action(a) => {
+                        if let Some(w) = window {
+                            let _ = w.emit("action", a);
+                        }
+                    }
+                    BridgeEvent::Pad { state, out } => {
+                        if let Some(w) = window {
+                            let _ = w.emit("pad", serde_json::json!({ "state": state, "out": out }));
+                        }
+                    }
+                    BridgeEvent::Stats(s) => {
+                        if let Some(w) = window {
+                            let _ = w.emit("stats", s);
+                        }
+                    }
+                }
+            }
+        })
+        .expect("spawn dispatcher");
+}
+
+fn main() {
+    let background = std::env::args().any(|a| a == "--background");
+
+    let app = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| open_window(app)))
+        .invoke_handler(tauri::generate_handler![
+            ipc::get_settings,
+            ipc::set_settings,
+            ipc::get_status,
+            ipc::test_rumble,
+            ipc::app_info,
+            ipc::open_external,
+            ipc::open_log_folder,
+            ipc::window_minimize,
+            ipc::window_maximize,
+            ipc::window_close,
+        ])
+        .setup(move |app| {
+            let settings_path = Settings::default_path();
+            let settings = Settings::load(&settings_path);
+            let start_with_windows = settings.start_with_windows;
+            let bridge = Bridge::start(settings);
+            bridge.set_live(false);
+            let (tx, rx) = mpsc::channel();
+            bridge.subscribe(tx);
+            app.manage(AppState { bridge: Mutex::new(Some(bridge)), settings_path });
+            spawn_dispatcher(app.handle().clone(), rx);
+            tray::build(app.handle(), start_with_windows)?;
+            if !background {
+                open_window(app.handle());
+            }
+            Ok(())
+        })
+        .build(tauri::generate_context!())
+        .expect("failed to build Pad Companion");
+
+    app.run(|app, event| match event {
+        // Closing the window must not end the app: the controller bridge lives in the tray.
+        RunEvent::ExitRequested { api, code: None, .. } => api.prevent_exit(),
+        RunEvent::Exit => {
+            let bridge = app.state::<AppState>().bridge.lock().unwrap_or_else(|e| e.into_inner()).take();
+            if let Some(b) = bridge {
+                b.stop();
+            }
+        }
+        _ => {}
+    });
+}

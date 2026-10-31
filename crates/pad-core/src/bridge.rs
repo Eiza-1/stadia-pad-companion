@@ -109,6 +109,10 @@ struct Shared {
     /// Actions run on their own thread so launching Edge or SendInput never stalls input.
     actions: Mutex<Sender<Action>>,
     thread: Mutex<Option<thread::Thread>>,
+    /// Live pad/stats events are produced only while a window is showing them.
+    live: AtomicBool,
+    /// Rumble handle of the current session, for the settings page's rumble test.
+    writer: Mutex<Option<(Arc<HidDevice>, usize)>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -126,7 +130,7 @@ impl Shared {
     }
 
     fn subscribed(&self) -> bool {
-        lock(&self.sub).is_some()
+        self.live.load(Ordering::Relaxed) && lock(&self.sub).is_some()
     }
 
     fn set_status(&self, f: impl FnOnce(&mut Status)) {
@@ -179,6 +183,8 @@ impl Bridge {
             stop: AtomicBool::new(false),
             hidden: Mutex::new(Vec::new()),
             actions: Mutex::new(spawn_action_worker()),
+            live: AtomicBool::new(true),
+            writer: Mutex::new(None),
             thread: Mutex::new(None),
         });
         let sh = shared.clone();
@@ -215,6 +221,24 @@ impl BridgeHandle {
 
     pub fn unsubscribe(&self) {
         *lock(&self.shared.sub) = None;
+    }
+
+    /// Turns the ~60/s pad and 1/s stats events on (window open) or off (window closed).
+    /// Status and action events always flow to the subscriber.
+    pub fn set_live(&self, on: bool) {
+        self.shared.live.store(on, Ordering::Relaxed);
+    }
+
+    /// Short rumble pulse at the profile's strength, so the user can feel the setting.
+    pub fn test_rumble(&self) {
+        let Some((w, len)) = lock(&self.shared.writer).clone() else { return };
+        let pct = self.shared.rumble_pct.load(Ordering::Relaxed) as u32;
+        let v = (200 * pct / 100) as u8;
+        thread::spawn(move || {
+            w.write_output(&rumble_report(v, v, len));
+            thread::sleep(Duration::from_millis(350));
+            w.write_output(&rumble_report(0, 0, len));
+        });
     }
 
     /// Stops the bridge, removes the virtual pad and gives the real pad back to every app.
@@ -369,6 +393,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let input = HidDevice::open_shared(&dev.path).map_err(io)?;
     let writer = Arc::new(HidDevice::open_writer(&dev.path).map_err(io)?);
     let out_len = writer.output_len;
+    *lock(&sh.writer) = Some((writer.clone(), out_len));
 
     let w = writer.clone();
     let sh2 = sh.clone();
@@ -482,6 +507,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     if out_len > 0 {
         writer.write_output(&rumble_report(0, 0, out_len));
     }
+    *lock(&sh.writer) = None;
     drop(reader);
     drop(pad);
     drop(perf);

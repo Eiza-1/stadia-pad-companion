@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/pad-core"]
+members = ["crates/pad-core", "app/src-tauri"]
 
 [profile.release]
 lto = true

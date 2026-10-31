@@ -80,7 +80,7 @@ fn find_gemini_window() -> Option<HWND> {
     found
 }
 
-fn shell_open(file: &str, params: Option<&str>) -> bool {
+pub fn shell_open(file: &str, params: Option<&str>) -> bool {
     let file = HSTRING::from(file);
     let params = params.map(HSTRING::from);
     let r = unsafe {
