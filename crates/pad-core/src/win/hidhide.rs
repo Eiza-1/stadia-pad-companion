@@ -135,6 +135,46 @@ pub fn ensure_app_registered() -> bool {
     contains(&query("--app-list"), &me)
 }
 
+/// Stadia instance ids (USB or Bluetooth LE) in `HidHideCLI --dev-list` output.
+fn stadia_ids_in_dev_list(out: &str) -> Vec<String> {
+    out.lines()
+        .filter_map(|l| l.trim().strip_prefix("--dev-hide"))
+        .map(|id| id.trim().trim_matches('"').to_string())
+        .filter(|id| {
+            let u = id.to_uppercase();
+            (u.contains("VID_18D1") || u.contains("VID&0218D1")) && (u.contains("PID_9400") || u.contains("PID&9400"))
+        })
+        .collect()
+}
+
+/// Uninstall cleanup: un-hide every Stadia pad we may have hidden (connected or not) and
+/// remove this exe from the HidHide whitelist.
+pub fn cleanup() {
+    if !installed() {
+        return;
+    }
+    let ids = stadia_ids_in_dev_list(&query("--dev-list"));
+    unhide(&ids);
+    run(&["--app-unreg".into(), self_path()], false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn finds_hidden_stadia_ids_only() {
+        let out = "--dev-hide \"HID\\VID_18D1&PID_9400&MI_01\\7&249F76DE&0&0000\"\r\n--dev-hide \"HID\\VID_054C&PID_09CC\\8&1\"\r\n--dev-hide \"HID\\{00001812-0000-1000-8000-00805F9B34FB}_DEV_VID&0218D1_PID&9400_REV&0100_CA6FFE0A918E\\9&17C8AD2D&0&0000\"\r\n";
+        assert_eq!(
+            stadia_ids_in_dev_list(out),
+            vec![
+                "HID\\VID_18D1&PID_9400&MI_01\\7&249F76DE&0&0000".to_string(),
+                "HID\\{00001812-0000-1000-8000-00805F9B34FB}_DEV_VID&0218D1_PID&9400_REV&0100_CA6FFE0A918E\\9&17C8AD2D&0&0000".to_string(),
+            ]
+        );
+    }
+}
+
 /// Give the pad back to every app (on Quit or when hiding is turned off).
 pub fn unhide(ids: &[String]) {
     if !installed() || ids.is_empty() {

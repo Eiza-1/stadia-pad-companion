@@ -103,6 +103,12 @@ fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
 }
 
 fn main() {
+    // Uninstaller hook: give the pad back and remove autostart, without starting the app.
+    if std::env::args().any(|a| a == "--cleanup") {
+        pad_core::win::autostart::set(false);
+        pad_core::win::hidhide::cleanup();
+        return;
+    }
     let background = std::env::args().any(|a| a == "--background");
 
     let app = tauri::Builder::default()
