@@ -1,0 +1,31 @@
+@font-face {
+  font-family: "Roboto Flex";
+  src: url("../assets/fonts/RobotoFlex.ttf") format("truetype");
+  font-weight: 100 1000;
+  font-stretch: 25% 151%;
+  font-display: block;
+}
+@font-face {
+  font-family: "Material Symbols Rounded";
+  src: url("../assets/fonts/MaterialSymbolsRounded.woff2") format("woff2");
+  font-weight: 100 700;
+  font-display: block;
+}
+@property --r { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
+
+:root {
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --emph: cubic-bezier(.2, 0, 0, 1);
+  --font: "Roboto Flex", "Segoe UI Variable", system-ui, sans-serif;
+  /* dark Material You scheme; theme.js re-seeds these from the pad colour */
+  --primary: #ffb59c; --on-primary: #5c1900; --pc: #7a2a0e; --on-pc: #ffdbcf;
+  --sec-c: #5d4037; --surface: #141110; --sc-lowest: #0e0c0b; --sc-low: #1c1917; --sc: #211d1b;
+  --sc-high: #2b2725; --sc-highest: #36312f; --on-surface: #ede0dc; --on-sv: #d8c2bb;
+  --outline: #53433e; --glow: #ff4c1d;
+  --error: #ffb4ab; --on-error: #690005;
+  color-scheme: dark;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition-duration: .01ms !important; }
+}
