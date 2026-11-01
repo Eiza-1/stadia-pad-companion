@@ -59,11 +59,15 @@ export function renderPad(svgEl, colors) {
   if (colors) colorPad(svgEl, colors);
 }
 
+/** Colours a drawn pad and rebuilds it, so every part re-reads the colours at once wherever the
+ *  drawing is (pads on hidden configuration pages included) instead of relying on inherited-variable
+ *  repaint. The live pad state is redrawn by the caller's "viewchange". */
 export function colorPad(svgEl, c) {
   for (const k of ["b", "b2", "k", "t", "led", "ks", "rim", "sh", "hi"]) {
     if (c[k]) svgEl.style.setProperty(`--${k}`, c[k]);
     else svgEl.style.removeProperty(`--${k}`); // e.g. no "hi": pressed keys use the scheme primary
   }
+  svgEl.innerHTML = MARKUP;
 }
 
 const pressedOf = (buttons) => new Set(buttons ? String(buttons).split(" | ") : []);

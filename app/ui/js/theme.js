@@ -31,4 +31,6 @@ export function applyScheme(color) {
   document.querySelectorAll("svg.pad:not(.home-pad)").forEach((s) => {
     colorPad(s, p.pad);
   });
+  // Rebuilt drawings start neutral: let the live pad state redraw on the one in view.
+  window.dispatchEvent(new Event("viewchange"));
 }
