@@ -149,3 +149,4 @@ svg.pad .trig[data-t="r2"] .fill { transform-origin: right; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 6px 18px; margin-top: 12px; font: 400 13px var(--font); }
 .kv dt { color: var(--on-sv); }
 .kv dd { margin: 0; }
+.hint2 { margin: 12px 0 0; font: 400 12.5px/1.45 var(--font); color: var(--on-sv); }

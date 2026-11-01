@@ -123,6 +123,8 @@ pub struct Profile {
     pub right: StickCfg,
     pub triggers: TriggerCfg,
     pub rumble_pct: u8,
+    /// How game rumble is translated for this profile (rumble.rs).
+    pub rumble_mode: crate::rumble::RumbleMode,
 }
 
 pub const DEFAULT_PROFILE: &str = "Default";
@@ -136,6 +138,7 @@ impl Default for Profile {
             right: StickCfg::default(),
             triggers: TriggerCfg::default(),
             rumble_pct: 100,
+            rumble_mode: crate::rumble::RumbleMode::Default,
         }
     }
 }

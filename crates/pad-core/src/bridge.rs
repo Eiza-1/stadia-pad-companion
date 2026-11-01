@@ -4,6 +4,7 @@
 use crate::log;
 use crate::mapping::{Mapper, XOut};
 use crate::report::{parse_input, rumble_report, PadState};
+use crate::rumble::{Motors, RumbleMode, Translator, DEMO};
 use crate::settings::Settings;
 use crate::special::{Action, Special};
 use crate::stats::{Stats, StatsSnapshot};
@@ -183,7 +184,8 @@ struct Shared {
     /// Live pad/stats events are produced only while a window is showing them.
     live: AtomicBool,
     /// Rumble handle of the current session, for the settings page's rumble test.
-    writer: Mutex<Option<(Arc<HidDevice>, usize)>>,
+    /// The session's rumble engine (USB only; `None` over Bluetooth or while disconnected).
+    rumble: Mutex<Option<Sender<RumbleMsg>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -266,7 +268,7 @@ impl Bridge {
             hide_failed: Mutex::new(Vec::new()),
             actions: Mutex::new(spawn_action_worker()),
             live: AtomicBool::new(true),
-            writer: Mutex::new(None),
+            rumble: Mutex::new(None),
             thread: Mutex::new(None),
         });
         let sh = shared.clone();
@@ -284,6 +286,9 @@ pub struct BridgeHandle {
 impl BridgeHandle {
     pub fn update_settings(&self, s: Settings) {
         self.shared.rumble_pct.store(s.active().rumble_pct.min(100), Ordering::Relaxed);
+        if let Some(tx) = lock(&self.shared.rumble).as_ref() {
+            let _ = tx.send(RumbleMsg::Config(s.active().rumble_mode, s.active().rumble_pct));
+        }
         crate::win::actions::set_capture_tool(s.capture_tool);
         *lock(&self.shared.settings) = s;
         self.shared.settings_dirty.store(true, Ordering::Release);
@@ -312,16 +317,11 @@ impl BridgeHandle {
         self.shared.live.store(on, Ordering::Relaxed);
     }
 
-    /// Short rumble pulse at the profile's strength, so the user can feel the setting.
+    /// Plays the Test rumble scene (rumble::DEMO) through the selected rumble profile and strength.
     pub fn test_rumble(&self) {
-        let Some((w, len)) = lock(&self.shared.writer).clone() else { return };
-        let pct = self.shared.rumble_pct.load(Ordering::Relaxed) as u32;
-        let v = (200 * pct / 100) as u8;
-        thread::spawn(move || {
-            w.write_output(&rumble_report(v, v, len));
-            thread::sleep(Duration::from_millis(350));
-            w.write_output(&rumble_report(0, 0, len));
-        });
+        if let Some(tx) = lock(&self.shared.rumble).as_ref() {
+            let _ = tx.send(RumbleMsg::Demo);
+        }
     }
 
     /// Stops the bridge, removes the virtual pad and gives the real pad back to every app.
@@ -458,6 +458,91 @@ fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<
         .ok()
 }
 
+/// Messages to a session's rumble engine.
+enum RumbleMsg {
+    /// The game set new motor levels.
+    Game(Motors),
+    /// Rumble profile / strength changed.
+    Config(RumbleMode, u8),
+    /// Play the Test rumble scene through the current profile.
+    Demo,
+    Stop,
+}
+
+/// The session's Rumble Translation Engine: translates each game request, times Competitive ticks and
+/// the Test rumble scene, and writes the pad only when the motor output changes.
+fn spawn_rumble(writer: Arc<HidDevice>, out_len: usize, mode: RumbleMode, strength: u8) -> (Sender<RumbleMsg>, JoinHandle<()>) {
+    let (tx, rx) = mpsc::channel::<RumbleMsg>();
+    let thread = thread::Builder::new()
+        .name("pad-rumble".into())
+        .spawn(move || {
+            let mut t = Translator::new(mode, strength);
+            let mut written = Motors::OFF;
+            let mut failure_logged = false;
+            let mut write = |m: Motors| {
+                if m == written {
+                    return;
+                }
+                written = m;
+                if !writer.write_output(&rumble_report(m.heavy, m.light, out_len)) && !failure_logged {
+                    failure_logged = true;
+                    log!("rumble write failed: {}; further failures not logged", std::io::Error::last_os_error());
+                }
+            };
+            let mut game = Motors::OFF;
+            // Test rumble scene in progress: (start µs, next step).
+            let mut demo: Option<(u64, usize)> = None;
+            loop {
+                let now = now_us();
+                let demo_due = demo.and_then(|(st, i)| DEMO.get(i).map(|(ms, _)| st + *ms as u64 * 1000));
+                let wake = [t.next_deadline(), demo_due].into_iter().flatten().min();
+                let timeout = wake.map_or(Duration::from_secs(3600), |w| Duration::from_micros(w.saturating_sub(now)));
+                match rx.recv_timeout(timeout) {
+                    Ok(RumbleMsg::Game(m)) => {
+                        game = m;
+                        if demo.is_none() {
+                            write(t.request(m, now_us()));
+                        }
+                    }
+                    Ok(RumbleMsg::Config(mode, strength)) => {
+                        t.set(mode, strength);
+                        if demo.is_none() {
+                            write(t.request(game, now_us()));
+                        }
+                    }
+                    Ok(RumbleMsg::Demo) => {
+                        t.reset();
+                        demo = Some((now_us(), 0));
+                    }
+                    Ok(RumbleMsg::Stop) | Err(mpsc::RecvTimeoutError::Disconnected) => break,
+                    Err(mpsc::RecvTimeoutError::Timeout) => {}
+                }
+                let now = now_us();
+                if let Some(m) = t.tick(now) {
+                    write(m);
+                }
+                if let Some((st, i)) = demo.as_mut() {
+                    while let Some((ms, m)) = DEMO.get(*i) {
+                        if now < *st + *ms as u64 * 1000 {
+                            break;
+                        }
+                        write(t.request(*m, now));
+                        *i += 1;
+                    }
+                    if *i >= DEMO.len() && t.next_deadline().is_none() {
+                        // Scene over: back to whatever the game is asking for.
+                        demo = None;
+                        t.reset();
+                        write(t.request(game, now));
+                    }
+                }
+            }
+            write(Motors::OFF);
+        })
+        .expect("spawn rumble engine");
+    (tx, thread)
+}
+
 /// Runs special-button actions; ends when the bridge's sender is dropped.
 fn spawn_action_worker() -> Sender<Action> {
     let (tx, rx) = mpsc::channel::<Action>();
@@ -540,25 +625,15 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     if !rumble_ok {
         log!("rumble unavailable on {:?}: {}", dev.transport, std::io::Error::last_os_error());
     }
-    *lock(&sh.writer) = rumble_ok.then(|| (writer.clone(), out_len));
-
-    let w = writer.clone();
-    let sh2 = sh.clone();
-    let mut last_rumble = None;
-    let mut failure_logged = false;
+    // Game rumble goes through the Rumble Translation Engine on its own thread: the ViGEm callback only
+    // queues the request, so a game's rumble call never waits on USB or on a pulse timer.
+    let engine = rumble_ok
+        .then(|| spawn_rumble(writer.clone(), out_len, settings.active().rumble_mode, settings.active().rumble_pct));
+    *lock(&sh.rumble) = engine.as_ref().map(|(tx, _)| tx.clone());
+    let game_tx = engine.as_ref().map(|(tx, _)| tx.clone());
     let mut pad = VirtualPad::connect(move |large, small| {
-        if !rumble_ok {
-            return;
-        }
-        let pct = sh2.rumble_pct.load(Ordering::Relaxed) as u32;
-        let v = ((large as u32 * pct / 100) as u8, (small as u32 * pct / 100) as u8);
-        if last_rumble == Some(v) || out_len == 0 {
-            return;
-        }
-        last_rumble = Some(v);
-        if !w.write_output(&rumble_report(v.0, v.1, out_len)) && !failure_logged {
-            failure_logged = true;
-            log!("rumble write failed: {}; further failures not logged", std::io::Error::last_os_error());
+        if let Some(tx) = &game_tx {
+            let _ = tx.send(RumbleMsg::Game(Motors::new(large, small)));
         }
     })?;
     // Hide only once the virtual pad exists: without ViGEm the user keeps the real pad (Steam can still use it).
@@ -669,12 +744,14 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     };
     watch.stop();
 
-    *lock(&sh.writer) = None;
+    *lock(&sh.rumble) = None;
     drop(reader);
-    // Drop the virtual pad first (joins the rumble thread), so no late rumble lands after the stop.
+    // Drop the virtual pad first (joins ViGEm's notification thread), so no game rumble arrives after
+    // the engine stops; the engine then turns the motors off and exits.
     drop(pad);
-    if rumble_ok {
-        writer.write_output(&rumble_report(0, 0, out_len));
+    if let Some((tx, thread)) = engine {
+        let _ = tx.send(RumbleMsg::Stop);
+        let _ = thread.join();
     }
     drop(perf);
     // Not joined: a GATT read in flight may take seconds; the thread checks `alive` before touching status.
