@@ -19,7 +19,7 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--primar
 .home { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 99px; font: 500 13px var(--font); color: var(--on-sv); opacity: 0; transform: scale(.8); pointer-events: none; transition: background .2s, opacity .45s var(--spring), transform .45s var(--spring); }
 body.inside .home { opacity: 1; transform: none; pointer-events: auto; }
 .home:hover { background: var(--sc); }
-.tab { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 16px; border-radius: 99px; background: var(--sc-high); font: 500 13px var(--font); opacity: 0; transform: scale(.8); pointer-events: none; transition: all .45s var(--spring); }
+.tab { display: flex; align-items: center; gap: 8px; padding: 4px 4px 4px 14px; line-height: 18px; border-radius: 99px; background: var(--sc-high); font: 500 13px var(--font); opacity: 0; transform: scale(.8); pointer-events: none; transition: all .45s var(--spring); }
 .tab .ib { width: 26px; height: 26px; }
 .tab .ms { font-size: 16px; }
 .tab > .ms { color: var(--primary); }
