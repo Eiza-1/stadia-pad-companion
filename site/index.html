@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pad Companion Support</title>
+  <meta name="description" content="Report a bug or suggest a feature for Pad Companion, the Stadia controller app for Windows.">
+  <link rel="icon" href="assets/stadia.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block">
+  <link rel="stylesheet" href="site.css">
+</head>
+<body>
+  <div class="amb" aria-hidden="true"><b></b><b></b><img class="logo" src="assets/stadia.svg" alt=""></div>
+
+  <header class="bar">
+    <a class="brand" href="#"><img src="assets/stadia.svg" alt="">Pad Companion <span>Support</span></a>
+    <nav class="tabs" aria-label="Sections">
+      <a href="#bug" data-v="bug"><span class="ms">bug_report</span>Report a bug</a>
+      <a href="#feature" data-v="feature"><span class="ms">lightbulb</span>Suggest a feature</a>
+      <a href="#limits" data-v="limits"><span class="ms">info</span>Known limits</a>
+    </nav>
+    <a class="all" id="allTickets" href="#" target="_blank" rel="noopener"><span class="ms">list_alt</span>All tickets</a>
+  </header>
+
+  <main>
+    <!-- Start -->
+    <section class="view" id="v-home" aria-labelledby="h-home">
+      <div class="hero">
+        <div class="pad"><img src="assets/pad.png" alt="Stadia Controller"></div>
+        <h1 id="h-home">How can we help?</h1>
+        <p class="lede">Tell us what went wrong or what you'd like Pad Companion to do. Each report becomes a ticket we track until it's fixed or shipped.</p>
+      </div>
+      <div class="choices">
+        <a class="choice" href="#bug">
+          <span class="ms">bug_report</span>
+          <b>Report a bug</b>
+          <span>Something doesn't work, feels wrong, or crashed.</span>
+        </a>
+        <a class="choice" href="#feature">
+          <span class="ms">lightbulb</span>
+          <b>Suggest a feature</b>
+          <span>An idea that would make the pad or the app better.</span>
+        </a>
+      </div>
+      <p class="sub">Before you report, check the <a href="#limits">known limits</a>: some things are set by the pad or by Windows.</p>
+    </section>
+
+    <!-- Bug report -->
+    <section class="view" id="v-bug" aria-labelledby="h-bug" hidden>
+      <form class="card" id="bugForm" novalidate>
+        <h1 id="h-bug"><span class="ms">bug_report</span>Report a bug</h1>
+        <p class="lede">The more exact, the faster it's fixed. Your app version, connection and pad firmware are filled in when you open this page from Pad Companion.</p>
+
+        <label class="field"><span>Short summary</span>
+          <input name="summary" required maxlength="120" placeholder="e.g. Right stick drifts after waking from sleep">
+        </label>
+        <label class="field"><span>What happened</span>
+          <textarea name="what" required rows="4" placeholder="What you saw, and what you expected instead."></textarea>
+        </label>
+        <label class="field"><span>Steps to reproduce <em>optional</em></span>
+          <textarea name="steps" rows="3" placeholder="1. Connect the pad over Bluetooth&#10;2. Open Button mapping&#10;3. …"></textarea>
+        </label>
+
+        <fieldset class="field"><legend>How often</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="frequency" value="Every time" checked><span>Every time</span></label>
+            <label><input type="radio" name="frequency" value="Sometimes"><span>Sometimes</span></label>
+            <label><input type="radio" name="frequency" value="Once"><span>Once</span></label>
+          </div>
+        </fieldset>
+        <fieldset class="field"><legend>Connection</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="connection" value="USB cable" checked><span>USB cable</span></label>
+            <label><input type="radio" name="connection" value="Bluetooth"><span>Bluetooth</span></label>
+            <label><input type="radio" name="connection" value="Not connected"><span>Not connected</span></label>
+          </div>
+        </fieldset>
+
+        <div class="grid3">
+          <label class="field"><span>App version</span><input name="version" placeholder="e.g. 0.1.0"></label>
+          <label class="field"><span>Pad firmware</span><input name="firmware" placeholder="Home › chip icon"></label>
+          <label class="field"><span>Windows</span><input name="windows" placeholder="e.g. Windows 11 24H2"></label>
+        </div>
+
+        <div class="note"><span class="ms">attach_file</span><span>GitHub opens with your report ready. Drag in <b>log.txt</b> (Pad Companion › Other settings › Open log folder) and any screenshots, then press <b>Create</b>.</span></div>
+        <div class="actions">
+          <a class="btn text" href="#">Cancel</a>
+          <button class="btn" type="submit"><span class="ms">open_in_new</span>Continue on GitHub</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Feature request -->
+    <section class="view" id="v-feature" aria-labelledby="h-feature" hidden>
+      <form class="card" id="featureForm" novalidate>
+        <h1 id="h-feature"><span class="ms">lightbulb</span>Suggest a feature</h1>
+        <p class="lede">Describe what you're trying to do first; the best features start from a real moment where something was missing.</p>
+
+        <label class="field"><span>Short title</span>
+          <input name="summary" required maxlength="120" placeholder="e.g. Per-game profiles that switch automatically">
+        </label>
+        <fieldset class="field"><legend>Area</legend>
+          <div class="chips">
+            <label><input type="radio" name="area" value="Button mapping" checked><span>Button mapping</span></label>
+            <label><input type="radio" name="area" value="Rumble"><span>Rumble</span></label>
+            <label><input type="radio" name="area" value="Performance"><span>Performance</span></label>
+            <label><input type="radio" name="area" value="Sticks & triggers"><span>Sticks &amp; triggers</span></label>
+            <label><input type="radio" name="area" value="Special buttons"><span>Special buttons</span></label>
+            <label><input type="radio" name="area" value="Profiles"><span>Profiles</span></label>
+            <label><input type="radio" name="area" value="Other"><span>Other</span></label>
+          </div>
+        </fieldset>
+        <label class="field"><span>What would you like to do?</span>
+          <textarea name="problem" required rows="4" placeholder="The situation, in your words. e.g. I switch between a racing game and a shooter and re-map every time."></textarea>
+        </label>
+        <label class="field"><span>Your idea <em>optional</em></span>
+          <textarea name="idea" rows="3" placeholder="How you'd like it to work."></textarea>
+        </label>
+        <fieldset class="field"><legend>How much it matters to you</legend>
+          <div class="seg" role="radiogroup">
+            <label><input type="radio" name="importance" value="Nice to have" checked><span>Nice to have</span></label>
+            <label><input type="radio" name="importance" value="Important"><span>Important</span></label>
+            <label><input type="radio" name="importance" value="I can't use the app without it"><span>Essential</span></label>
+          </div>
+        </fieldset>
+
+        <div class="actions">
+          <a class="btn text" href="#">Cancel</a>
+          <button class="btn" type="submit"><span class="ms">open_in_new</span>Continue on GitHub</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Known limits -->
+    <section class="view" id="v-limits" aria-labelledby="h-limits" hidden>
+      <div class="card">
+        <h1 id="h-limits"><span class="ms">info</span>Known limits</h1>
+        <p class="lede">Measured on real pads. These come from the controller's firmware or from Windows, not from Pad Companion.</p>
+        <dl class="limits">
+          <dt><span class="ms">vibration</span>No rumble over Bluetooth</dt>
+          <dd>Windows' Bluetooth controller driver rejects the Stadia pad's vibration report, and Windows doesn't let apps reach the pad any other way. Rumble works over the USB cable.</dd>
+          <dt><span class="ms">speed</span>125 Hz, not 250 Hz or more</dt>
+          <dd>Windows already asks the pad for input every 4 ms over USB, but the pad's firmware sends 125 reports a second (a steady 8 ms). No driver or setting can raise it.</dd>
+          <dt><span class="ms">bluetooth</span>Bluetooth arrives in small bursts</dt>
+          <dd>Windows gives the pad a 10 ms link; reports arrive a few at a time. For the lowest latency, use the cable.</dd>
+          <dt><span class="ms">screenshot_monitor</span>No capture through Epic Games</dt>
+          <dd>Epic has no screenshot or recording feature. The Capture button uses Xbox Game Bar, Steam, NVIDIA or AMD instead.</dd>
+        </dl>
+        <div class="actions"><a class="btn" href="#bug"><span class="ms">bug_report</span>Report something else</a></div>
+      </div>
+    </section>
+
+    <!-- After submit -->
+    <section class="view" id="v-sent" aria-labelledby="h-sent" hidden>
+      <div class="card done">
+        <span class="ms big">task_alt</span>
+        <h1 id="h-sent">Almost done</h1>
+        <p class="lede" id="sentText">GitHub opened in a new tab with your ticket ready. Check it, attach anything useful, then press <b>Create</b>.</p>
+        <div class="note" id="copyBox" hidden><span class="ms">content_copy</span><span>Your report is too long to send in a link. Copy it, then paste it into the new ticket.<button class="btn tonal" id="copyBtn" type="button">Copy report</button></span></div>
+        <div class="actions"><a class="btn text" id="reopen" href="#" target="_blank" rel="noopener">Open GitHub again</a><a class="btn" href="#">Done</a></div>
+      </div>
+    </section>
+
+    <div class="banner" id="setup" hidden><span class="ms">warning</span><span>This copy of the support site isn't connected to a GitHub repository yet, so tickets can't be opened from here.</span></div>
+  </main>
+
+  <footer class="foot">Pad Companion is an independent app for the Google Stadia Controller. Stadia is a trademark of Google LLC.</footer>
+  <script src="site.js"></script>
+</body>
+</html>

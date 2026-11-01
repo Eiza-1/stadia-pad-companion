@@ -1,0 +1,52 @@
+name: Bug report
+description: Something in Pad Companion doesn't work as it should.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The support site fills most of this in for you; please check it, then attach
+        `log.txt` (Pad Companion › Other settings › Open log folder) by dragging it into the box at the bottom.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you see, and what did you expect instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Connect the pad over …
+        2. Open …
+        3. …
+  - type: input
+    id: frequency
+    attributes:
+      label: How often
+      placeholder: Every time / Sometimes / Once
+  - type: input
+    id: connection
+    attributes:
+      label: Connection
+      placeholder: USB cable / Bluetooth
+  - type: input
+    id: app-version
+    attributes:
+      label: Pad Companion version
+  - type: input
+    id: firmware
+    attributes:
+      label: Pad firmware
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log and screenshots
+      description: Drag log.txt and any screenshots or recordings here.

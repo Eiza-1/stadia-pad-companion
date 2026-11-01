@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest something Pad Companion should do.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      placeholder: Mapping / Rumble / Performance / Special buttons / Home / Other
+  - type: textarea
+    id: problem
+    attributes:
+      label: What would you like to do?
+      description: The situation or problem, in your words.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your idea
+      description: How you'd like it to work.
+  - type: input
+    id: importance
+    attributes:
+      label: How much it matters to you
+      placeholder: Nice to have / Important / I can't use the app without it
