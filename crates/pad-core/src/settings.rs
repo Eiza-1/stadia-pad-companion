@@ -43,6 +43,17 @@ pub enum CaptureAction {
     Off,
 }
 
+/// Which recorder the Capture button drives. `Auto` picks the first one available (see actions.rs).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum CaptureTool {
+    #[default]
+    Auto,
+    GameBar,
+    Steam,
+    Nvidia,
+    Amd,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum StadiaAction {
     #[default]
@@ -140,6 +151,7 @@ pub struct Settings {
     pub start_with_windows: bool,
     pub assistant: AssistantAction,
     pub capture: CaptureAction,
+    pub capture_tool: CaptureTool,
     pub stadia: StadiaAction,
 }
 
@@ -154,6 +166,7 @@ impl Default for Settings {
             start_with_windows: false,
             assistant: AssistantAction::Gemini,
             capture: CaptureAction::TapHold,
+            capture_tool: CaptureTool::Auto,
             stadia: StadiaAction::GuideHold,
         }
     }

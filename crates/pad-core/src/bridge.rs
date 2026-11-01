@@ -254,6 +254,7 @@ pub struct Bridge;
 
 impl Bridge {
     pub fn start(settings: Settings) -> BridgeHandle {
+        crate::win::actions::set_capture_tool(settings.capture_tool);
         let shared = Arc::new(Shared {
             rumble_pct: AtomicU8::new(settings.active().rumble_pct.min(100)),
             settings: Mutex::new(settings),
@@ -283,6 +284,7 @@ pub struct BridgeHandle {
 impl BridgeHandle {
     pub fn update_settings(&self, s: Settings) {
         self.shared.rumble_pct.store(s.active().rumble_pct.min(100), Ordering::Relaxed);
+        crate::win::actions::set_capture_tool(s.capture_tool);
         *lock(&self.shared.settings) = s;
         self.shared.settings_dirty.store(true, Ordering::Release);
     }

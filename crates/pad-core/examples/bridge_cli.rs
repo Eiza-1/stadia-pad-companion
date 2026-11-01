@@ -34,6 +34,18 @@ Press Enter to close.");
         let _ = std::io::stdin().read_line(&mut String::new());
         return;
     }
+    if std::env::args().any(|a| a == "--actions") {
+        // Read-only: what the special buttons would use right now (launches nothing, presses no keys).
+        use pad_core::settings::CaptureTool;
+        use pad_core::win::actions;
+        println!("gemini app: {:?}", actions::gemini_app());
+        let env = actions::capture_env();
+        println!("capture env: {env:?}");
+        for t in [CaptureTool::Auto, CaptureTool::GameBar, CaptureTool::Steam, CaptureTool::Nvidia, CaptureTool::Amd] {
+            println!("  {t:?} -> {:?}", actions::choose(t, &env));
+        }
+        return;
+    }
     if std::env::args().any(|a| a == "--gatt") {
         for d in pad_core::win::hid::enumerate_stadia() {
             if let Some(a) = pad_core::win::ble::bt_addr_from_path(&d.path) {

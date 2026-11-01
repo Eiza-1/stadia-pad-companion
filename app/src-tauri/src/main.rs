@@ -120,6 +120,7 @@ fn main() {
             ipc::test_rumble,
             ipc::app_info,
             ipc::open_external,
+            ipc::capture_info,
             ipc::open_log_folder,
             ipc::window_minimize,
             ipc::window_maximize,

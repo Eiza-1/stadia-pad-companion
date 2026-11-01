@@ -49,11 +49,33 @@ pub fn test_rumble(state: State<'_, AppState>) {
 pub struct AppInfo {
     version: &'static str,
     game_bar_capture: bool,
+    /// Whether a Gemini app is installed (otherwise Gemini opens in the default browser).
+    gemini_app: bool,
 }
 
 #[tauri::command]
 pub fn app_info() -> AppInfo {
-    AppInfo { version: env!("CARGO_PKG_VERSION"), game_bar_capture: actions::game_bar_capture_enabled() }
+    AppInfo {
+        version: env!("CARGO_PKG_VERSION"),
+        game_bar_capture: actions::game_bar_capture_enabled(),
+        gemini_app: actions::gemini_app().is_some(),
+    }
+}
+
+/// What the Capture button can use right now, and what it would pick for the given choice.
+#[derive(Serialize)]
+pub struct CaptureInfo {
+    env: actions::CaptureEnv,
+    uses: actions::Recorder,
+}
+
+#[tauri::command]
+pub fn capture_info(tool: pad_core::settings::CaptureTool) -> CaptureInfo {
+    let env = actions::capture_env();
+    // The Steam-game check looks at the window in front, which is Pad Companion while you read this:
+    // treat a running Steam as "would be used in a Steam game".
+    let shown = actions::CaptureEnv { steam_game: env.steam, ..env };
+    CaptureInfo { env, uses: actions::choose(tool, &shown) }
 }
 
 /// Opens driver download pages and the bug-report link in the default browser (https only).
