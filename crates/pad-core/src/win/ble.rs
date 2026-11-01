@@ -1,8 +1,8 @@
-//! Bluetooth LE extras: Force Low-Latency (preferred connection parameters) and battery level.
+//! Bluetooth LE extras: Force Low-Latency (preferred connection parameters), battery level and firmware string.
 
 use crate::bridge::LowLatencyState;
 use crate::log;
-use windows::core::h;
+use windows::core::{h, GUID};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
     GattCharacteristicUuids, GattCommunicationStatus, GattServiceUuids,
 };
@@ -78,32 +78,54 @@ impl Drop for LowLatency {
     }
 }
 
-/// Battery Service 0x180F / Battery Level 0x2A19, read uncached. `None` if unavailable.
-pub fn battery(bt_addr: u64) -> Option<u8> {
-    let read = || -> windows::core::Result<Option<u8>> {
-        let device = BluetoothLEDevice::FromBluetoothAddressAsync(bt_addr)?.join()?;
-        let services = device
-            .GetGattServicesForUuidWithCacheModeAsync(GattServiceUuids::Battery()?, BluetoothCacheMode::Uncached)?
-            .join()?;
-        if services.Status()? != GattCommunicationStatus::Success {
-            return Ok(None);
-        }
-        let Some(service) = services.Services()?.into_iter().next() else { return Ok(None) };
-        let chars = service.GetCharacteristicsForUuidAsync(GattCharacteristicUuids::BatteryLevel()?)?.join()?;
-        let Some(ch) = chars.Characteristics()?.into_iter().next() else { return Ok(None) };
-        let value = ch.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached)?.join()?;
-        if value.Status()? != GattCommunicationStatus::Success {
-            return Ok(None);
-        }
-        let level = DataReader::FromBuffer(&value.Value()?)?.ReadByte()?;
-        let _ = service.Close();
-        let _ = device.Close();
-        Ok(Some(level.min(100)))
-    };
-    read().unwrap_or_else(|e| {
-        log!("battery read failed: {e}");
+/// Reads one GATT characteristic uncached. `None` if the service, characteristic or read is unavailable.
+fn read_characteristic(bt_addr: u64, service: GUID, characteristic: GUID) -> windows::core::Result<Option<Vec<u8>>> {
+    let device = BluetoothLEDevice::FromBluetoothAddressAsync(bt_addr)?.join()?;
+    let services = device.GetGattServicesForUuidWithCacheModeAsync(service, BluetoothCacheMode::Uncached)?.join()?;
+    if services.Status()? != GattCommunicationStatus::Success {
+        return Ok(None);
+    }
+    let Some(service) = services.Services()?.into_iter().next() else { return Ok(None) };
+    let chars = service.GetCharacteristicsForUuidAsync(characteristic)?.join()?;
+    let Some(ch) = chars.Characteristics()?.into_iter().next() else { return Ok(None) };
+    let value = ch.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached)?.join()?;
+    let bytes = if value.Status()? == GattCommunicationStatus::Success {
+        let buf = value.Value()?;
+        let mut out = vec![0u8; buf.Length()? as usize];
+        DataReader::FromBuffer(&buf)?.ReadBytes(&mut out)?;
+        Some(out)
+    } else {
         None
-    })
+    };
+    let _ = service.Close();
+    let _ = device.Close();
+    Ok(bytes)
+}
+
+/// Battery Service 0x180F / Battery Level 0x2A19. `None` if unavailable.
+pub fn battery(bt_addr: u64) -> Option<u8> {
+    let read = || read_characteristic(bt_addr, GattServiceUuids::Battery()?, GattCharacteristicUuids::BatteryLevel()?);
+    match read() {
+        Ok(v) => v.and_then(|b| b.first().map(|l| (*l).min(100))),
+        Err(e) => {
+            log!("battery read failed: {e}");
+            None
+        }
+    }
+}
+
+/// Device Information 0x180A / Firmware Revision String 0x2A26. `None` if unavailable.
+pub fn firmware_revision(bt_addr: u64) -> Option<String> {
+    let read = || {
+        read_characteristic(bt_addr, GattServiceUuids::DeviceInformation()?, GattCharacteristicUuids::FirmwareRevisionString()?)
+    };
+    match read() {
+        Ok(v) => v.map(|b| String::from_utf8_lossy(&b).trim_end_matches('\0').trim().to_string()).filter(|s| !s.is_empty()),
+        Err(e) => {
+            log!("firmware read failed: {e}");
+            None
+        }
+    }
 }
 
 #[cfg(test)]

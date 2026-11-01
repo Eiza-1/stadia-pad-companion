@@ -9,7 +9,8 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
     CM_Get_Device_Interface_ListW, CM_Get_Device_Interface_List_SizeW, CM_GET_DEVICE_INTERFACE_LIST_PRESENT, CR_SUCCESS,
 };
 use windows::Win32::Devices::HumanInterfaceDevice::{
-    HidD_FreePreparsedData, HidD_GetHidGuid, HidD_GetPreparsedData, HidD_SetNumInputBuffers, HidD_SetOutputReport,
+    HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetProductString, HidD_GetSerialNumberString,
+    HIDD_ATTRIBUTES, HidD_GetPreparsedData, HidD_SetNumInputBuffers, HidD_SetOutputReport,
     HidP_GetCaps, HIDP_CAPS, HIDP_STATUS_SUCCESS, PHIDP_PREPARSED_DATA,
 };
 use windows::Win32::Foundation::{CloseHandle, ERROR_IO_PENDING, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
@@ -262,4 +263,47 @@ pub fn usb_stadia_present() -> bool {
 /// Instance ids of every present Stadia HID interface (no handles opened; cheap enough for a 1 s check).
 pub fn stadia_instance_ids() -> Vec<String> {
     hid_interface_paths().iter().filter(|p| is_stadia(p)).map(|p| to_instance_id(p)).collect()
+}
+
+/// What the pad reports about itself: USB/BLE ids, the device release number and its strings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawDeviceInfo {
+    pub vid: u16,
+    pub pid: u16,
+    /// bcdDevice over USB, the DIS PnP "product version" over Bluetooth LE.
+    pub version: u16,
+    pub product: String,
+    pub serial: String,
+}
+
+impl HidDevice {
+    pub fn device_info(&self) -> Option<RawDeviceInfo> {
+        let mut a = HIDD_ATTRIBUTES { Size: std::mem::size_of::<HIDD_ATTRIBUTES>() as u32, ..Default::default() };
+        unsafe {
+            if !HidD_GetAttributes(self.handle, &mut a) {
+                return None;
+            }
+        }
+        let string = |f: unsafe fn(HANDLE, *mut c_void, u32) -> bool| {
+            let mut buf = [0u16; 128];
+            if unsafe { f(self.handle, buf.as_mut_ptr() as *mut c_void, (buf.len() * 2) as u32) } {
+                let n = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+                String::from_utf16_lossy(&buf[..n])
+            } else {
+                String::new()
+            }
+        };
+        Some(RawDeviceInfo {
+            vid: a.VendorID,
+            pid: a.ProductID,
+            version: a.VersionNumber,
+            product: string(|h, b, l| unsafe { HidD_GetProductString(h, b, l) }),
+            serial: string(|h, b, l| unsafe { HidD_GetSerialNumberString(h, b, l) }),
+        })
+    }
+}
+
+/// Opens a Stadia HID path just long enough to read its identity (no read/write access needed).
+pub fn read_device_info(path: &str) -> Option<RawDeviceInfo> {
+    HidDevice::open(path, false).ok()?.device_info()
 }

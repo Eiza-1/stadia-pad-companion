@@ -3,13 +3,17 @@
 import { init, invoke, listen, settings } from "./ipc.js";
 import { applyScheme } from "./theme.js";
 import { applyPadState } from "./pad.js";
-import { initHome, renderStatus } from "./home.js";
+import { initHome, renderStatus, closePops } from "./home.js";
 import { initDevice, showPage } from "./device.js";
 
 const $ = (id) => document.getElementById(id);
 
 function goInside(inside) {
   document.body.classList.toggle("inside", inside);
+  // The hidden view still sits on top of the visible one; inert stops it taking clicks and focus.
+  $("homeV").inert = inside;
+  $("devV").inert = !inside;
+  if (inside) closePops();
 }
 
 async function boot() {

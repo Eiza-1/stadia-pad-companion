@@ -7,7 +7,7 @@ use crate::report::{parse_input, rumble_report, PadState};
 use crate::settings::Settings;
 use crate::special::{Action, Special};
 use crate::stats::{Stats, StatsSnapshot};
-use crate::win::hid::{enumerate_stadia, now_us, stadia_instance_ids, usb_stadia_present, HidDevice};
+use crate::win::hid::{enumerate_stadia, now_us, stadia_instance_ids, usb_stadia_present, HidDevice, RawDeviceInfo};
 use crate::settings::PadMode;
 use crate::win::ble::{self, LowLatency};
 use crate::win::perf::CompetitiveGuard;
@@ -96,6 +96,36 @@ pub struct Status {
     pub ble_low_latency: LowLatencyState,
     pub rate_override_available: bool,
     pub other_mappers: Vec<String>,
+    /// Identity of the connected pad (for the Home firmware panel); `None` while disconnected.
+    pub device: Option<PadIdentity>,
+}
+
+/// What the Home firmware panel shows about the connected pad.
+#[derive(Serialize, Clone, PartialEq, Debug)]
+pub struct PadIdentity {
+    pub model: String,
+    /// `VID:PID` in hex, e.g. `18D1:9400`.
+    pub hardware_id: String,
+    /// Device release number (bcdDevice), e.g. `1.00`.
+    pub version: String,
+    /// Firmware revision string from the BLE Device Information service; only readable over Bluetooth.
+    pub firmware: Option<String>,
+    /// `Some(true)` once seen over Bluetooth (only the Bluetooth-mode firmware can pair). Over USB both
+    /// firmwares report the same ids, so it stays unknown.
+    pub bluetooth_firmware: Option<bool>,
+    pub serial: String,
+}
+
+pub fn identity(raw: &RawDeviceInfo, transport: Transport) -> PadIdentity {
+    let v = raw.version;
+    PadIdentity {
+        model: if raw.product.trim().is_empty() { "Stadia Controller".into() } else { raw.product.trim().into() },
+        hardware_id: format!("{:04X}:{:04X}", raw.vid, raw.pid),
+        version: format!("{:x}.{:02x}", v >> 8, v & 0xFF),
+        firmware: None,
+        bluetooth_firmware: (transport == Transport::Bluetooth).then_some(true),
+        serial: raw.serial.trim().into(),
+    }
 }
 
 impl Default for Status {
@@ -109,6 +139,7 @@ impl Default for Status {
             ble_low_latency: LowLatencyState::Off,
             rate_override_available: false,
             other_mappers: Vec::new(),
+            device: None,
         }
     }
 }
@@ -348,13 +379,20 @@ impl Perf {
     }
 }
 
-/// Reads the BLE battery level on connect and every 60 s, off the input thread (GATT reads can take 100s of ms).
+/// Reads the BLE firmware string once, then the battery level on connect and every 60 s, off the input
+/// thread (GATT reads can take 100s of ms).
 fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
     let sh = sh.clone();
     thread::Builder::new()
         .name("pad-battery".into())
         .spawn(move || {
             com_init();
+            // Once per connection: the firmware string never changes while connected.
+            if let Some(fw) = ble::firmware_revision(addr) {
+                if alive.load(Ordering::Relaxed) {
+                    sh.set_status(|s| if let Some(d) = s.device.as_mut() { d.firmware = Some(fw) });
+                }
+            }
             while alive.load(Ordering::Relaxed) {
                 let level = ble::battery(addr);
                 if alive.load(Ordering::Relaxed) && lock(&sh.status).battery != level {
@@ -476,18 +514,21 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let mut perf = Perf::default();
     let ll_state = perf.apply(&settings, dev);
 
+    log!("connected {:?} {}", dev.transport, dev.instance_id);
+    let ident = input.device_info().map(|r| identity(&r, dev.transport));
+    sh.set_status(|s| {
+        s.vigem_ok = true;
+        s.connection = Some(dev.transport);
+        s.device = ident;
+        s.charging = dev.transport == Transport::Usb;
+        s.ble_low_latency = ll_state;
+    });
+
+    // After the status above, so the firmware read always finds `device` set.
     let battery_alive = Arc::new(AtomicBool::new(true));
     let battery_thread = ble::bt_addr_from_path(&dev.path)
         .filter(|_| dev.transport == Transport::Bluetooth)
         .and_then(|a| spawn_battery(sh, a, battery_alive.clone()));
-
-    log!("connected {:?} {}", dev.transport, dev.instance_id);
-    sh.set_status(|s| {
-        s.vigem_ok = true;
-        s.connection = Some(dev.transport);
-        s.charging = dev.transport == Transport::Usb;
-        s.ble_low_latency = ll_state;
-    });
 
     let mut last_state = PadState::default();
     let mut last_pad_event = 0u64;
@@ -581,6 +622,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     sh.set_status(|s| {
         s.connection = None;
         s.battery = None;
+        s.device = None;
         s.charging = false;
         if s.ble_low_latency == LowLatencyState::Active {
             s.ble_low_latency = LowLatencyState::Off;
@@ -632,5 +674,30 @@ mod tests {
         r.failed();
         r.reset();
         assert!(r.should_request(Some(2)), "toggling the setting retries");
+    }
+
+    fn raw(version: u16, product: &str) -> RawDeviceInfo {
+        RawDeviceInfo { vid: 0x18D1, pid: 0x9400, version, product: product.into(), serial: "99180YCAC5Q7QD".into() }
+    }
+
+    #[test]
+    fn identity_formats_ids_and_bcd_version() {
+        let id = identity(&raw(0x0100, "Stadia Controller rev. A"), Transport::Usb);
+        assert_eq!(id.model, "Stadia Controller rev. A");
+        assert_eq!(id.hardware_id, "18D1:9400");
+        assert_eq!(id.version, "1.00");
+        assert_eq!(id.serial, "99180YCAC5Q7QD");
+        assert_eq!(identity(&raw(0x0213, "x"), Transport::Usb).version, "2.13");
+    }
+
+    #[test]
+    fn bluetooth_firmware_is_only_claimed_when_seen_over_bluetooth() {
+        assert_eq!(identity(&raw(0x0100, "x"), Transport::Bluetooth).bluetooth_firmware, Some(true));
+        assert_eq!(identity(&raw(0x0100, "x"), Transport::Usb).bluetooth_firmware, None, "USB can't tell the two firmwares apart");
+    }
+
+    #[test]
+    fn identity_falls_back_when_the_pad_sends_no_product_string() {
+        assert_eq!(identity(&raw(0x0100, ""), Transport::Usb).model, "Stadia Controller");
     }
 }

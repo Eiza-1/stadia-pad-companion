@@ -2,10 +2,81 @@
 
 import { renderPad, colorPad, applyPadState } from "./pad.js";
 import { SCHEMES, applyScheme, current } from "./theme.js";
-import { settings, save, invoke, onStatus } from "./ipc.js";
+import { settings, status, save, invoke, onStatus, toast } from "./ipc.js";
 
 const $ = (id) => document.getElementById(id);
 const BLE_HINT = "Plug in the cable, or hold Stadia + Y for 2 s to pair over Bluetooth.";
+const MANUAL_URL = "https://support.google.com/stadia/answer/";
+
+// Home popovers (palette, firmware): one open at a time, each grows out of the button that opened it.
+const pops = {};
+let openPop = null;
+
+/** Anchors a popover above its button and points its grow-circle at the button's centre. */
+function placePop(key) {
+  const { btn, el } = pops[key];
+  const card = el.offsetParent.getBoundingClientRect(), b = btn.getBoundingClientRect();
+  el.style.right = `${card.right - b.right - 6}px`;
+  el.style.bottom = `${card.bottom - b.top + 10}px`;
+  // Clip circle starts on the button's centre (just below the popover) and grows to cover it.
+  const p = el.getBoundingClientRect();
+  const ox = b.left + b.width / 2 - p.left, oy = b.top + b.height / 2 - p.top;
+  el.style.setProperty("--ox", `${ox}px`);
+  el.style.setProperty("--oy", `${oy}px`);
+  el.style.setProperty("--or", `${Math.hypot(Math.max(ox, p.width - ox), oy) + 8}px`);
+}
+
+function showPop(key) {
+  closePops();
+  const { btn, el, onOpen } = pops[key];
+  onOpen?.();
+  placePop(key);
+  void el.getBoundingClientRect();
+  el.inert = false;
+  el.classList.add("open");
+  btn.classList.add("act");
+  btn.setAttribute("aria-expanded", "true");
+  openPop = key;
+  (el.querySelector('[tabindex="0"]') || el.querySelector("button"))?.focus({ preventScroll: true });
+}
+
+export function closePops() {
+  const p = pops[openPop];
+  if (!p) return;
+  openPop = null;
+  p.el.classList.remove("open");
+  p.el.inert = true;
+  p.btn.classList.remove("act");
+  p.btn.setAttribute("aria-expanded", "false");
+  p.onClose?.();
+}
+
+/** Firmware panel rows, also used for "Copy details". */
+function fwRows(d) {
+  if (!d) return [];
+  return [
+    ["Model", d.model],
+    ["Firmware", d.firmware ?? `Version ${d.version}`],
+    ["Bluetooth mode", d.bluetooth_firmware ? "Installed" : "Pair over Bluetooth to confirm"],
+    ["Hardware ID", d.hardware_id],
+    ...(d.serial ? [["Serial", d.serial]] : []),
+  ];
+}
+
+function renderFirmware(s) {
+  const d = s?.connection ? s.device : null;
+  $("fwSub").textContent = d ? (s.connection === "Bluetooth" ? "Read over Bluetooth" : "Read over USB") : "";
+  $("fwList").innerHTML = "";
+  for (const [k, v] of fwRows(d)) {
+    const dt = document.createElement("dt"), dd = document.createElement("dd");
+    dt.textContent = k;
+    dd.textContent = v;
+    if (k === "Bluetooth mode") dd.classList.toggle("ok", !!d.bluetooth_firmware);
+    $("fwList").append(dt, dd);
+  }
+  $("fwList").hidden = $("fwCopy").hidden = !d;
+  $("fwEmpty").hidden = !!d;
+}
 
 export function initHome(goInside) {
   const cur = document.querySelector("#pw .cur");
@@ -13,13 +84,13 @@ export function initHome(goInside) {
   renderPad(cur, SCHEMES[settings.pad_color]?.pad);
   renderPad(next);
 
-  // Palette: hovering a swatch diffuses its colour into the pad from the cursor; it is saved too.
-  const pal = $("pal");
-  pal.innerHTML = Object.entries(SCHEMES)
-    .map(([k, s]) => `<button class="sw" role="option" data-c="${k}" aria-label="${s.name}"><i style="background:${s.swatch}"></i><span>${s.name}</span></button>`)
+  // Palette: hovering a colour previews it on the pad (diffusing from the cursor); a click keeps it,
+  // and closing without one goes back to the saved colour.
+  $("swgrid").innerHTML = Object.entries(SCHEMES)
+    .map(([k, s]) => `<button class="swc" role="radio" data-c="${k}" aria-checked="false"><i style="background:${s.swatch}"></i><span>${s.name}</span><span class="ms ck">check</span></button>`)
     .join("");
-  let pending, palT;
-  const mark = () => pal.querySelectorAll(".sw").forEach((s) => s.classList.toggle("on", s.dataset.c === current));
+  const tiles = [...$("swgrid").querySelectorAll(".swc")];
+  let pending;
   const diffuse = (c, ev) => {
     if (c === current) return;
     const r = $("pw").getBoundingClientRect();
@@ -32,19 +103,63 @@ export function initHome(goInside) {
     applyScheme(c);
     clearTimeout(pending);
     pending = setTimeout(() => { colorPad(cur, SCHEMES[c].pad); next.classList.remove("go"); }, 900);
-    mark();
-    save((s) => (s.pad_color = c));
+    $("palName").textContent = SCHEMES[c].name;
   };
-  const open = () => { clearTimeout(palT); pal.classList.add("open"); };
-  const close = () => { palT = setTimeout(() => pal.classList.remove("open"), 350); };
-  for (const el of [pal, $("palBtn")]) { el.onmouseenter = open; el.onmouseleave = close; }
-  $("palBtn").onclick = () => pal.classList.toggle("open");
-  pal.querySelectorAll(".sw").forEach((s) => {
-    s.onmouseenter = (e) => diffuse(s.dataset.c, e);
-    s.onfocus = () => diffuse(s.dataset.c);
-    s.onclick = (e) => { diffuse(s.dataset.c, e); pal.classList.remove("open"); };
+  const mark = () => tiles.forEach((t) => {
+    const on = t.dataset.c === settings.pad_color;
+    t.classList.toggle("on", on);
+    t.setAttribute("aria-checked", String(on));
+    t.tabIndex = on ? 0 : -1;
   });
+  for (const [i, t] of tiles.entries()) {
+    t.onmouseenter = (e) => diffuse(t.dataset.c, e);
+    t.onfocus = () => diffuse(t.dataset.c);
+    t.onclick = (e) => {
+      diffuse(t.dataset.c, e);
+      if (settings.pad_color !== t.dataset.c) save((s) => (s.pad_color = t.dataset.c));
+      mark();
+      closePops();
+    };
+    t.onkeydown = (e) => {
+      const step = { ArrowRight: 1, ArrowDown: 2, ArrowLeft: -1, ArrowUp: -2 }[e.key];
+      if (!step) return;
+      e.preventDefault();
+      tiles[(i + step + tiles.length) % tiles.length].focus();
+    };
+  }
   mark();
+
+  pops.pal = { btn: $("palBtn"), el: $("palPop"),
+    onOpen: () => { mark(); $("palName").textContent = SCHEMES[settings.pad_color]?.name ?? ""; },
+    onClose: () => diffuse(settings.pad_color) };
+  pops.fw = { btn: $("fwBtn"), el: $("fwPop"), onOpen: () => renderFirmware(status) };
+  for (const [k, p] of Object.entries(pops)) p.btn.onclick = () => (openPop === k ? closePops() : showPop(k));
+  document.addEventListener("pointerdown", (e) => {
+    const p = pops[openPop];
+    if (p && !p.el.contains(e.target) && !p.btn.contains(e.target)) closePops();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !openPop) return;
+    const btn = pops[openPop].btn;
+    closePops();
+    btn.focus();
+  });
+  window.addEventListener("resize", () => openPop && placePop(openPop));
+  // Tabbing out of a popover closes it (focus moving to its own button is a toggle, handled above).
+  for (const p of Object.values(pops))
+    p.el.addEventListener("focusout", (e) => {
+      if (pops[openPop] === p && e.relatedTarget && !p.el.contains(e.relatedTarget) && e.relatedTarget !== p.btn) closePops();
+    });
+
+  $("fwCopy").onclick = async () => {
+    try {
+      await navigator.clipboard.writeText(fwRows(status?.device).map(([k, v]) => `${k}: ${v}`).join("\n"));
+      toast("Firmware details copied");
+    } catch {
+      toast("Couldn't copy to the clipboard", "error");
+    }
+  };
+  $("manBtn").onclick = () => invoke("open_external", { url: MANUAL_URL }).catch(() => toast("Couldn't open the manual", "error"));
 
   $("stage").onclick = () => goInside(true);
   $("stage").onkeydown = (e) => (e.key === "Enter" || e.key === " ") && goInside(true);
@@ -92,6 +207,7 @@ export function renderStatus(s) {
   svc.title = s.vigem_ok ? "Controller service is running" : "ViGEmBus driver missing";
 
   renderBanners(s);
+  if (openPop === "fw") renderFirmware(s);
 }
 
 function renderBanners(s) {

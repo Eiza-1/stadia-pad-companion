@@ -17,6 +17,15 @@
         ],
         "createdAt": "2026-10-31T06:39:53.608Z",
         "reason": "builder: pulse only shows on the connection pill while a pad is actually connected (live status)"
+      },
+      {
+        "rule": "nested-cards",
+        "value": "*",
+        "files": [
+          "app/ui/index.html"
+        ],
+        "createdAt": "2026-11-01T01:05:29.512Z",
+        "reason": "Claude: #palPop/#fwPop are elevated popovers (absolute, shown on demand) anchored inside the Home card, not nested cards; verified by removing them -> 0 findings"
       }
     ]
   }

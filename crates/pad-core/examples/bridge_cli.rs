@@ -6,6 +6,12 @@ use pad_core::settings::{PadMode, Settings};
 use std::sync::mpsc;
 
 fn main() {
+    if std::env::args().any(|a| a == "--info") {
+        for d in pad_core::win::hid::enumerate_stadia() {
+            println!("{:?} {} {:?}", d.transport, d.path, pad_core::win::hid::read_device_info(&d.path));
+        }
+        return;
+    }
     let mut settings = Settings::load(&Settings::default_path());
     if std::env::args().any(|a| a == "--competitive") {
         settings.pad_mode = PadMode::Competitive;

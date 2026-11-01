@@ -44,7 +44,6 @@
           <svg class="home-pad cur"></svg>
           <svg class="home-pad next"></svg>
         </div>
-        <div class="hint">Click the pad to configure</div>
       </div>
       <div class="meta">
         <h2>Stadia Controller</h2>
@@ -54,17 +53,28 @@
             <div class="cpill" id="battPill" hidden><span class="ms" id="battIco">battery_full</span><span id="battTxt"></span></div>
           </div>
           <div class="tools">
-            <button class="ib" id="palBtn" aria-label="Pad colour" title="Pad colour"><span class="ms">palette</span></button>
+            <button class="ib" id="palBtn" aria-label="Pad colour" title="Pad colour" aria-haspopup="dialog" aria-expanded="false" aria-controls="palPop"><span class="ms">palette</span></button>
+            <button class="ib" id="fwBtn" aria-label="Firmware" title="Firmware" aria-haspopup="dialog" aria-expanded="false" aria-controls="fwPop"><span class="ms">memory</span></button>
+            <button class="ib" id="manBtn" aria-label="User manual (opens in your browser)" title="User manual"><span class="ms">menu_book</span></button>
           </div>
         </div>
         <div class="subhint" id="connHint" hidden>Plug in the cable, or hold Stadia + Y for 2 s to pair over Bluetooth.</div>
-        <div class="palette" id="pal" role="listbox" aria-label="Pad colour"></div>
+      </div>
+      <div class="pop" id="palPop" role="dialog" aria-label="Pad colour" inert>
+        <div class="pop-h"><b>Pad colour</b><small id="palName"></small></div>
+        <div class="swgrid" id="swgrid" role="radiogroup" aria-label="Pad colour"></div>
+      </div>
+      <div class="pop" id="fwPop" role="dialog" aria-label="Firmware" inert>
+        <div class="pop-h"><b>Firmware</b><small id="fwSub"></small></div>
+        <dl class="fwlist" id="fwList"></dl>
+        <div class="fwempty" id="fwEmpty"><span class="ms">link_off</span>Connect the controller to read its firmware.</div>
+        <button class="pbtn" id="fwCopy"><span class="ms">content_copy</span>Copy details</button>
       </div>
     </div>
   </section>
 
   <!-- ============ DEVICE ============ -->
-  <section class="view" id="devV">
+  <section class="view" id="devV" inert>
     <aside class="side">
       <div class="devhead"><div><small><span class="ms" id="dhConnIco">link_off</span><span id="dhConn">Not connected</span></small><b>Stadia Controller</b></div></div>
       <button class="prof" id="profChip"><span id="profName">Profile · Default</span><span class="ms">chevron_right</span></button>
