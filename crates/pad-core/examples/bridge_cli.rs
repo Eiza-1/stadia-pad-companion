@@ -5,7 +5,17 @@ use pad_core::bridge::{Bridge, BridgeEvent};
 use pad_core::settings::{PadMode, Settings};
 use std::sync::mpsc;
 
+#[path = "support/bench.rs"]
+mod bench;
+
 fn main() {
+    if std::env::args().any(|a| a == "--bench") {
+        bench::run();
+        println!("
+Press Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        return;
+    }
     if std::env::args().any(|a| a == "--info") {
         for d in pad_core::win::hid::enumerate_stadia() {
             println!("{:?} {} {:?}", d.transport, d.path, pad_core::win::hid::read_device_info(&d.path));

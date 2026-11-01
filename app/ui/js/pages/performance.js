@@ -1,22 +1,24 @@
-// Performance: polling rate (honest about what the hardware allows), Basic / Competitive,
-// Force Bluetooth Low-Latency Mode, and live measurements from the bridge.
+// Performance: what the pad's link really delivers (measured, per connection), Basic / Competitive,
+// and live measurements from the bridge.
 
 import { settings, status, save, onSettings, onStatus } from "../ipc.js";
-import { h, seg, toggle, panel } from "../ui.js";
+import { h, panel } from "../ui.js";
 
-const RATES = [125, 250, 500, 1000];
-let rateSeg, rateNote, modes, ll, statEls = {}, spark, history = [];
+let links, linkNote, modes, statEls = {}, spark, history = [];
 
 export function init(el) {
   el.innerHTML = `<h1>Performance</h1><p class="lede">Pad Companion forwards every report the moment it arrives, with several reads always queued so bursts are never dropped. These settings tune the rest.</p>`;
   const grid = h(`<div class="grid2"></div>`);
 
-  const rate = panel("Polling rate", "sensors");
-  rateSeg = seg([], settings.polling_hz, () => {});
-  rateSeg.classList.add("tall");
-  rate.append(rateSeg, h(`<div class="scale"><span>Daily use</span><span>Competitive</span></div>`));
-  rateNote = h(`<div class="note-box info"><span class="ms">info</span><span></span></div>`);
-  rate.append(rateNote);
+  // Measured on the pad (bridge_cli --bench): its firmware sends 125 reports/s on both links. Windows
+  // already polls USB every 4 ms, so no polling driver can raise it; Bluetooth bunches reports per link.
+  const rate = panel("Report rate", "sensors");
+  links = h(`<div class="links">
+    <div class="link" data-c="Usb"><span class="ms">usb</span><span class="t"><b>USB cable</b><small>A report every 8 ms, steady</small></span><b class="v">125<em>Hz</em></b></div>
+    <div class="link" data-c="Bluetooth"><span class="ms">bluetooth</span><span class="t"><b>Bluetooth</b><small></small></span><b class="v">125<em>Hz</em></b></div>
+  </div>`);
+  linkNote = h(`<div class="note-box info"><span class="ms">info</span><span></span></div>`);
+  rate.append(links, linkNote);
 
   const mode = panel("Pad mode", "bolt");
   modes = h(`<div class="modes"></div>`);
@@ -27,13 +29,7 @@ export function init(el) {
   };
   modeCard("Basic", "Basic", "eco", "Low latency tuned for everyday play. Light smoothing hides tiny stick jitter; Windows power management is left alone.");
   modeCard("Competitive", "Competitive", "rocket_launch", "No smoothing, input thread at game priority with a 1 ms system timer while a pad is connected. Uses a little more PC power; pad battery use stays about the same.");
-  ll = toggle({
-    label: "Force Bluetooth Low-Latency Mode",
-    desc: "Asks Windows for the shortest Bluetooth connection interval with no skipped slots, held while you play.",
-    checked: settings.ble_low_latency,
-    onChange: (v) => save((s) => (s.ble_low_latency = v)),
-  });
-  mode.append(modes, ll);
+  mode.append(modes);
   grid.append(rate, mode);
 
   const live = panel("Live input", "monitoring", `<p>Measured on the last 1024 reports. Move the sticks to see it update.</p>`);
@@ -55,33 +51,20 @@ export function init(el) {
 }
 
 function refresh() {
-  const bt = status?.connection === "Bluetooth";
-  const driver = !!status?.rate_override_available;
-  const options = RATES.map((r) => ({
-    value: r, label: `${r} Hz`, exp: r >= 500,
-    disabled: r > 125 && (bt || !driver),
-    title: r > 125 && bt ? "Bluetooth is limited by the radio link (≈7.5 ms)" : r > 125 && !driver ? "Needs a USB polling-rate driver" : "",
-  }));
-  const fresh = seg(options, settings.polling_hz, (v) => save((s) => (s.polling_hz = v)));
-  fresh.classList.add("tall");
-  rateSeg.replaceWith(fresh);
-  rateSeg = fresh;
-
-  const text = rateNote.querySelector("span:last-child");
-  rateNote.classList.toggle("info", settings.polling_hz < 500);
-  if (bt) text.textContent = "Over Bluetooth the pad reports at its native rate (about 125 Hz); faster rates need the USB cable.";
-  else if (!driver) text.textContent = "125 Hz is the pad's native USB rate. Faster rates need a USB polling-rate override driver (hidusbf); when it's installed these options unlock and the live meter shows what you actually get.";
-  else if (settings.polling_hz >= 500) text.textContent = "Experimental: 500 and 1000 Hz can cause stutter or input lag on some PCs. Set the rate in hidusbf; the live meter below shows the rate actually reached.";
-  else text.textContent = "Set the rate in hidusbf; the live meter below shows the rate actually reached.";
+  const conn = status?.connection;
+  const link = status?.link_ms;
+  links.querySelectorAll(".link").forEach((l) => l.classList.toggle("on", l.dataset.c === conn));
+  links.querySelector('[data-c="Bluetooth"] small').textContent = conn === "Bluetooth" && link
+    ? `Arrives in small bursts over a ${+link.toFixed(2)} ms link`
+    : "Arrives in small bursts over a 10 ms link";
+  const text = linkNote.querySelector("span:last-child");
+  text.textContent = conn === "Bluetooth"
+    ? "For the lowest latency, plug in the cable. Over Bluetooth reports come in bursts, so an input can wait a few slots. Windows’ own link is already its fastest for this pad, so Pad Companion leaves it alone."
+    : conn === "Usb"
+      ? "This is the pad's own limit: Windows already asks for a report every 4 ms, so a faster polling setting or driver can't add any."
+      : "Connect the pad to see the live numbers below.";
 
   modes.querySelectorAll(".mode").forEach((m) => m.classList.toggle("on", m.dataset.m === settings.pad_mode));
-  const state = status?.ble_low_latency;
-  const usable = settings.pad_mode === "Competitive";
-  ll.set(settings.ble_low_latency, state === "Unsupported" || !usable,
-    state === "Unsupported" ? "Needs Windows 11." : !usable ? "Part of Competitive mode." : !bt ? "Applies when the pad is connected over Bluetooth." : state === "Active" ? "" : "Windows didn't grant the request this time; it is retried on reconnect.");
-  ll.querySelector("small").textContent = state === "Active"
-    ? "Active: Windows is holding the shortest connection interval for the pad."
-    : "Asks Windows for the shortest Bluetooth connection interval with no skipped slots, held while you play.";
 }
 
 function showStats(s) {

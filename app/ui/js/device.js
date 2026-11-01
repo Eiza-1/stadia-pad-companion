@@ -16,6 +16,7 @@ export function showPage(name) {
   document.querySelectorAll(".nav").forEach((n) => n.classList.toggle("on", n.dataset.p === name));
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("on", p.id === `p-${name}`));
   PAGES[name].shown?.();
+  window.dispatchEvent(new Event("viewchange")); // the page's pad catches up with the live state
 }
 
 export function initDevice() {

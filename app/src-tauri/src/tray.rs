@@ -1,7 +1,7 @@
 //! Tray icon: open, live status line, Start with Windows, Quit.
 
 use crate::{open_window, quit};
-use pad_core::bridge::{LowLatencyState, Status, Transport};
+use pad_core::bridge::{Status, Transport};
 use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Wry};
@@ -22,9 +22,6 @@ pub fn status_text(s: &Status) -> String {
             let mut t = "Connected · Bluetooth".to_string();
             if let Some(b) = s.battery {
                 t += &format!(" · {b}%");
-            }
-            if s.ble_low_latency == LowLatencyState::Active {
-                t += " · Low latency";
             }
             t
         }

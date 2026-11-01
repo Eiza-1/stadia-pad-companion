@@ -1,6 +1,5 @@
-//! Bluetooth LE extras: Force Low-Latency (preferred connection parameters), battery level and firmware string.
+//! Bluetooth LE extras: link parameters (read, and presets for the bench), battery level and firmware string.
 
-use crate::bridge::LowLatencyState;
 use crate::log;
 use windows::core::{h, GUID};
 use windows::Devices::Bluetooth::GenericAttributeProfile::{
@@ -34,38 +33,74 @@ pub fn low_latency_supported() -> bool {
     .unwrap_or(false)
 }
 
-/// Holds a ThroughputOptimized (shortest interval, no slave latency) connection-parameter request
-/// for the pad. Windows keeps it while this object lives; dropping it releases the request.
+/// Holds a connection-parameter preset request while it lives. Used only by `bridge_cli --bench`: the
+/// app makes no request, because no preset beat Windows' default link for the pad (see bridge.rs Perf).
 pub struct LowLatency {
     request: BluetoothLEPreferredConnectionParametersRequest,
     _device: BluetoothLEDevice,
 }
 
+/// Windows' connection-parameter presets (it publishes no exact values for them).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LinkPreset {
+    Balanced,
+    Throughput,
+    Power,
+}
+
+/// The link the pad actually has right now: interval in ms, peripheral latency (events it may skip),
+/// supervision timeout in ms. Windows 11 only.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LinkParams {
+    pub interval_ms: f32,
+    pub latency: u16,
+    pub timeout_ms: u32,
+}
+
+pub fn link_params(bt_addr: u64) -> Option<LinkParams> {
+    let read = || -> windows::core::Result<LinkParams> {
+        let device = BluetoothLEDevice::FromBluetoothAddressAsync(bt_addr)?.join()?;
+        let p = device.GetConnectionParameters()?;
+        let out = LinkParams {
+            interval_ms: p.ConnectionInterval()? as f32 * 1.25,
+            latency: p.ConnectionLatency()?,
+            timeout_ms: p.LinkTimeout()? as u32 * 10,
+        };
+        let _ = device.Close();
+        Ok(out)
+    };
+    read().ok()
+}
+
 impl LowLatency {
-    pub fn request(bt_addr: u64) -> Result<LowLatency, LowLatencyState> {
+    pub fn request_preset(bt_addr: u64, preset: LinkPreset) -> Result<LowLatency, String> {
         if !low_latency_supported() {
-            return Err(LowLatencyState::Unsupported);
+            return Err("needs Windows 11".into());
         }
         let attempt = || -> windows::core::Result<(BluetoothLEDevice, BluetoothLEPreferredConnectionParametersRequest)> {
             let device = BluetoothLEDevice::FromBluetoothAddressAsync(bt_addr)?.join()?;
-            let params = BluetoothLEPreferredConnectionParameters::ThroughputOptimized()?;
+            let params = match preset {
+                LinkPreset::Balanced => BluetoothLEPreferredConnectionParameters::Balanced()?,
+                LinkPreset::Throughput => BluetoothLEPreferredConnectionParameters::ThroughputOptimized()?,
+                LinkPreset::Power => BluetoothLEPreferredConnectionParameters::PowerOptimized()?,
+            };
             let request = device.RequestPreferredConnectionParameters(&params)?;
             Ok((device, request))
         };
         match attempt() {
             Ok((device, request)) => {
                 let status = request.Status();
-                log!("BLE low-latency request: {status:?}");
-                if status.is_ok_and(|s| s == BluetoothLEPreferredConnectionParametersRequestStatus::Success) {
+                log!("BLE {preset:?} request: {status:?}");
+                if status.as_ref().is_ok_and(|s| *s == BluetoothLEPreferredConnectionParametersRequestStatus::Success) {
                     Ok(LowLatency { request, _device: device })
                 } else {
                     let _ = request.Close();
-                    Err(LowLatencyState::Off)
+                    Err(format!("not granted ({status:?})"))
                 }
             }
             Err(e) => {
-                log!("BLE low-latency request failed: {e}");
-                Err(LowLatencyState::Off)
+                log!("BLE {preset:?} request failed: {e}");
+                Err(e.to_string())
             }
         }
     }

@@ -14,6 +14,7 @@ function goInside(inside) {
   $("homeV").inert = inside;
   $("devV").inert = !inside;
   if (inside) closePops();
+  window.dispatchEvent(new Event("viewchange"));
 }
 
 async function boot() {
@@ -31,17 +32,30 @@ async function boot() {
   $("winClose").onclick = () => invoke("window_close");
   document.addEventListener("keydown", (e) => e.key === "Escape" && document.body.classList.contains("inside") && goInside(false));
 
-  // Live pad: every pad drawing on screen follows the controller (events arrive ≤ 60/s).
-  let frame = null, latest = null;
-  listen("pad", (p) => {
-    latest = p.state;
-    window.dispatchEvent(new CustomEvent("padstate", { detail: p }));
-    if (!frame) frame = requestAnimationFrame(() => {
-      frame = null;
-      document.querySelectorAll("svg.pad:not(.next)").forEach((s) => applyPadState(s, latest));
-    });
-  });
-  listen("stats", (s) => window.dispatchEvent(new CustomEvent("padstats", { detail: s })));
+  // Live pad: only the drawing on screen follows the controller, at most once per frame, and nothing
+  // is drawn while the window is minimised. Hidden pages catch up when they are shown.
+  let frame = null, latest = null, lastEvent = null;
+  const visiblePads = () =>
+    document.querySelectorAll(document.body.classList.contains("inside") ? ".page.on svg.pad" : "#pw .cur");
+  const draw = () => {
+    frame = null;
+    if (!latest) return;
+    visiblePads().forEach((s) => applyPadState(s, latest));
+    window.dispatchEvent(new CustomEvent("padstate", { detail: lastEvent }));
+  };
+  const schedule = () => { if (!frame && !document.hidden) frame = requestAnimationFrame(draw); };
+  listen("pad", (p) => { latest = p.state; lastEvent = p; schedule(); });
+  window.addEventListener("viewchange", schedule);
+  document.addEventListener("visibilitychange", schedule);
+  listen("stats", (s) => !document.hidden && window.dispatchEvent(new CustomEvent("padstats", { detail: s })));
+
+  // Decorative motion (drifting glow, floating pad, pulsing dot) stops whenever the window isn't the
+  // one you're using, so it never competes with a game for the GPU.
+  const still = () => document.body.classList.toggle("still", document.hidden || !document.hasFocus());
+  window.addEventListener("blur", still);
+  window.addEventListener("focus", still);
+  document.addEventListener("visibilitychange", still);
+  still();
 }
 
 boot().catch((e) => {

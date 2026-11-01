@@ -135,8 +135,6 @@ pub struct Settings {
     pub active_profile: String,
     pub profiles: Vec<Profile>,
     pub pad_mode: PadMode,
-    pub ble_low_latency: bool,
-    pub polling_hz: u16,
     pub pad_color: PadColor,
     pub hide_from_games: bool,
     pub start_with_windows: bool,
@@ -151,8 +149,6 @@ impl Default for Settings {
             active_profile: DEFAULT_PROFILE.into(),
             profiles: vec![Profile::default()],
             pad_mode: PadMode::Basic,
-            ble_low_latency: true,
-            polling_hz: 125,
             pad_color: PadColor::JustBlack,
             hide_from_games: true,
             start_with_windows: false,
@@ -260,8 +256,16 @@ mod tests {
         let p = write_tmp(r#"{"pad_mode":"Competitive"}"#);
         let s = Settings::load(&p);
         assert_eq!(s.pad_mode, PadMode::Competitive);
-        assert_eq!(s.polling_hz, 125);
         assert_eq!(s.active().name, "Default");
+    }
+
+    #[test]
+    fn file_with_removed_fields_still_loads() {
+        // 0.1.0 saved these; they were dropped once measurements showed they could not change anything.
+        let p = write_tmp(r#"{"pad_mode":"Competitive","ble_low_latency":true,"polling_hz":250,"pad_color":"Wasabi"}"#);
+        let s = Settings::load(&p);
+        assert_eq!(s.pad_mode, PadMode::Competitive);
+        assert_eq!(s.pad_color, PadColor::Wasabi, "the rest of the file is kept");
     }
 
     #[test]

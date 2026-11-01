@@ -9,9 +9,9 @@ use crate::special::{Action, Special};
 use crate::stats::{Stats, StatsSnapshot};
 use crate::win::hid::{enumerate_stadia, now_us, stadia_instance_ids, usb_stadia_present, HidDevice, RawDeviceInfo};
 use crate::settings::PadMode;
-use crate::win::ble::{self, LowLatency};
+use crate::win::ble;
 use crate::win::perf::CompetitiveGuard;
-use crate::win::{hidhide, procs, rate, vigem::VirtualPad};
+use crate::win::{hidhide, procs, vigem::VirtualPad};
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -44,27 +44,6 @@ pub fn ids_to_hide(devs: &[DeviceInfo]) -> Vec<String> {
     devs.iter().map(|d| d.instance_id.clone()).collect()
 }
 
-/// Remembers a refused BLE low-latency request so settings saves don't re-run the blocking request on
-/// the input thread; a different pad (reconnect) or toggling the setting retries.
-#[derive(Default)]
-struct LlRetry {
-    refused_for: Option<Option<u64>>,
-    asked: Option<u64>,
-}
-
-impl LlRetry {
-    fn should_request(&mut self, addr: Option<u64>) -> bool {
-        self.asked = addr;
-        self.refused_for != Some(addr)
-    }
-    fn failed(&mut self) {
-        self.refused_for = Some(self.asked);
-    }
-    fn reset(&mut self) {
-        self.refused_for = None;
-    }
-}
-
 pub fn to_instance_id(path: &str) -> String {
     let p = path.strip_prefix(r"\\?\").unwrap_or(path);
     let p = p.rfind("#{").map_or(p, |g| &p[..g]);
@@ -78,14 +57,6 @@ pub enum BridgeError {
     Io(String),
 }
 
-#[derive(Serialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum LowLatencyState {
-    Unsupported,
-    #[default]
-    Off,
-    Active,
-}
-
 #[derive(Serialize, Clone, PartialEq, Debug)]
 pub struct Status {
     pub connection: Option<Transport>,
@@ -93,8 +64,8 @@ pub struct Status {
     pub charging: bool,
     pub vigem_ok: bool,
     pub hidhide_ok: bool,
-    pub ble_low_latency: LowLatencyState,
-    pub rate_override_available: bool,
+    /// Bluetooth connection interval Windows negotiated (ms); `None` on USB or when unreadable.
+    pub link_ms: Option<f32>,
     pub other_mappers: Vec<String>,
     /// Identity of the connected pad (for the Home firmware panel); `None` while disconnected.
     pub device: Option<PadIdentity>,
@@ -136,8 +107,7 @@ impl Default for Status {
             charging: false,
             vigem_ok: true,
             hidhide_ok: true,
-            ble_low_latency: LowLatencyState::Off,
-            rate_override_available: false,
+            link_ms: None,
             other_mappers: Vec::new(),
             device: None,
         }
@@ -155,6 +125,44 @@ pub enum BridgeEvent {
 
 /// Live pad events are throttled to ~60/s; the UI cannot draw faster and the bridge stays light.
 const PAD_EVENT_INTERVAL_US: u64 = 16_667;
+
+/// Limits live pad events to the UI's frame rate without ever losing the newest state: a report that
+/// comes too soon is held and sent once the interval has passed, even if the pad then goes quiet.
+#[derive(Default)]
+struct PadThrottle<T> {
+    last: Option<u64>,
+    held: Option<T>,
+}
+
+impl<T> PadThrottle<T> {
+    /// A new report at `now` (µs): returns it if it may go out now, else holds it.
+    fn report(&mut self, v: T, now: u64) -> Option<T> {
+        if self.last.is_some_and(|l| now.saturating_sub(l) < PAD_EVENT_INTERVAL_US) {
+            self.held = Some(v);
+            return None;
+        }
+        self.last = Some(now);
+        self.held = None;
+        Some(v)
+    }
+
+    /// Called when no report came: releases the held state once its slot has arrived.
+    fn tick(&mut self, now: u64) -> Option<T> {
+        let due = self.last.is_none_or(|l| now.saturating_sub(l) >= PAD_EVENT_INTERVAL_US);
+        if due && self.held.is_some() {
+            self.last = Some(now);
+            return self.held.take();
+        }
+        None
+    }
+
+    /// How long (ms, rounded up) until a held state is due; `None` when nothing is held.
+    fn wake_in_ms(&self, now: u64) -> Option<u64> {
+        self.held.as_ref()?;
+        let l = self.last.unwrap_or(now);
+        Some((l + PAD_EVENT_INTERVAL_US).saturating_sub(now).div_ceil(1000))
+    }
+}
 
 struct Shared {
     settings: Mutex<Settings>,
@@ -333,54 +341,85 @@ impl Drop for BridgeHandle {
     }
 }
 
-/// Competitive-mode resources for one session; rebuilt whenever the mode settings change.
+/// Competitive mode while a pad is connected. Deliberately no Bluetooth connection-parameter request:
+/// measured on the pad with nothing else holding one (bridge_cli --bench), Windows' own link is 10 ms;
+/// ThroughputOptimized stretches it to 15 ms (more >12 ms gaps, worse max), Balanced to 60 ms and
+/// PowerOptimized to 180 ms. The throughput preset also takes radio time from 2.4 GHz devices (mice).
 #[derive(Default)]
 struct Perf {
     guard: Option<CompetitiveGuard>,
-    low_latency: Option<LowLatency>,
-    retry: LlRetry,
 }
 
 impl Perf {
-    fn apply(&mut self, s: &Settings, dev: &DeviceInfo) -> LowLatencyState {
-        let competitive = s.pad_mode == PadMode::Competitive;
-        match (competitive, self.guard.is_some()) {
+    fn apply(&mut self, s: &Settings) {
+        match (s.pad_mode == PadMode::Competitive, self.guard.is_some()) {
             (true, false) => self.guard = Some(CompetitiveGuard::enter()),
             (false, true) => self.guard = None,
             _ => {}
         }
-        let want_ll = competitive && s.ble_low_latency;
-        let addr = ble::bt_addr_from_path(&dev.path).filter(|_| dev.transport == Transport::Bluetooth);
-        if !ble::low_latency_supported() {
-            return LowLatencyState::Unsupported;
-        }
-        match (want_ll, addr) {
-            (true, Some(a)) => {
-                if self.low_latency.is_none() {
-                    if !self.retry.should_request(Some(a)) {
-                        return LowLatencyState::Off;
+    }
+}
+
+/// Device-list checks that run once a second during a session. They walk Windows' device interfaces
+/// (milliseconds, sometimes more), so they live on their own normal-priority thread: the input thread
+/// only reads, maps and forwards.
+struct Watcher {
+    alive: Arc<AtomicBool>,
+    hide: Arc<AtomicBool>,
+    usb_appeared: Arc<AtomicBool>,
+    thread: Option<JoinHandle<()>>,
+}
+
+impl Watcher {
+    fn spawn(sh: &Arc<Shared>, transport: Transport, hide: bool) -> Watcher {
+        let alive = Arc::new(AtomicBool::new(true));
+        let hide = Arc::new(AtomicBool::new(hide));
+        let usb_appeared = Arc::new(AtomicBool::new(false));
+        let (sh, a, h, u) = (sh.clone(), alive.clone(), hide.clone(), usb_appeared.clone());
+        let thread = thread::Builder::new()
+            .name("pad-watch".into())
+            .spawn(move || {
+                while a.load(Ordering::Relaxed) {
+                    thread::park_timeout(Duration::from_secs(1));
+                    if !a.load(Ordering::Relaxed) {
+                        break;
                     }
-                    match LowLatency::request(a) {
-                        Ok(ll) => self.low_latency = Some(ll),
-                        Err(state) => {
-                            self.retry.failed();
-                            return state;
-                        }
+                    // A second transport came up (e.g. Bluetooth while cabled): hide it too.
+                    if h.load(Ordering::Relaxed) {
+                        sh.hide(&stadia_instance_ids());
+                    }
+                    // A cable plugged in while on Bluetooth: the session ends and the outer loop picks USB.
+                    if transport == Transport::Bluetooth
+                        && usb_stadia_present()
+                        && enumerate_stadia().iter().any(|d| d.transport == Transport::Usb)
+                    {
+                        u.store(true, Ordering::Relaxed);
+                        break;
                     }
                 }
-                LowLatencyState::Active
-            }
-            _ => {
-                self.low_latency = None;
-                self.retry.reset();
-                LowLatencyState::Off
-            }
+            })
+            .ok();
+        Watcher { alive, hide, usb_appeared, thread }
+    }
+
+    fn stop(&self) {
+        self.alive.store(false, Ordering::Relaxed);
+        if let Some(t) = &self.thread {
+            t.thread().unpark();
         }
     }
 }
 
-/// Reads the BLE firmware string once, then the battery level on connect and every 60 s, off the input
-/// thread (GATT reads can take 100s of ms).
+impl Drop for Watcher {
+    /// Not joined: a hide may be waiting on HidHide (or its admin prompt); the thread exits on its own.
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// Bluetooth status off the input thread: the firmware string once, the link interval every 30 s (asks
+/// Windows, no radio traffic) and the battery every 5 min (an over-the-air GATT read shares the link with
+/// the pad's reports, so it stays rare).
 fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
     let sh = sh.clone();
     thread::Builder::new()
@@ -393,12 +432,22 @@ fn spawn_battery(sh: &Arc<Shared>, addr: u64, alive: Arc<AtomicBool>) -> Option<
                     sh.set_status(|s| if let Some(d) = s.device.as_mut() { d.firmware = Some(fw) });
                 }
             }
+            let mut tick = 0u32;
             while alive.load(Ordering::Relaxed) {
-                let level = ble::battery(addr);
-                if alive.load(Ordering::Relaxed) && lock(&sh.status).battery != level {
-                    sh.set_status(|s| s.battery = level);
+                let link = ble::link_params(addr).map(|l| l.interval_ms);
+                let level = if tick % 10 == 0 { Some(ble::battery(addr)) } else { None };
+                if alive.load(Ordering::Relaxed) {
+                    let st = lock(&sh.status).clone();
+                    let level = level.unwrap_or(st.battery);
+                    if st.battery != level || st.link_ms != link {
+                        sh.set_status(|s| {
+                            s.battery = level;
+                            s.link_ms = link;
+                        });
+                    }
                 }
-                thread::park_timeout(Duration::from_secs(60));
+                tick = tick.wrapping_add(1);
+                thread::park_timeout(Duration::from_secs(30));
             }
         })
         .ok()
@@ -440,16 +489,14 @@ fn run(sh: Arc<Shared>) {
             mapper_check = now + 30_000_000;
             let others = procs::other_mappers();
             let hh = hidhide::installed();
-            let rate_ok = rate::override_driver_present();
             let changed = {
                 let st = lock(&sh.status);
-                st.other_mappers != others || st.hidhide_ok != hh || st.rate_override_available != rate_ok
+                st.other_mappers != others || st.hidhide_ok != hh
             };
             if changed {
                 sh.set_status(|s| {
                     s.other_mappers = others;
                     s.hidhide_ok = hh;
-                    s.rate_override_available = rate_ok;
                 });
             }
         }
@@ -512,7 +559,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let mut stats = Stats::new(1024);
     let mut reader = input.reader(4).map_err(io)?;
     let mut perf = Perf::default();
-    let ll_state = perf.apply(&settings, dev);
+    perf.apply(&settings);
 
     log!("connected {:?} {}", dev.transport, dev.instance_id);
     let ident = input.device_info().map(|r| identity(&r, dev.transport));
@@ -521,7 +568,6 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         s.connection = Some(dev.transport);
         s.device = ident;
         s.charging = dev.transport == Transport::Usb;
-        s.ble_low_latency = ll_state;
     });
 
     // After the status above, so the firmware read always finds `device` set.
@@ -531,8 +577,9 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         .and_then(|a| spawn_battery(sh, a, battery_alive.clone()));
 
     let mut last_state = PadState::default();
-    let mut last_pad_event = 0u64;
+    let mut throttle: PadThrottle<(PadState, XOut)> = PadThrottle::default();
     let mut next_tick = now_us() + 1_000_000;
+    let watch = Watcher::spawn(sh, dev.transport, hide);
     let result = loop {
         if sh.stopping() {
             break Ok(());
@@ -541,12 +588,10 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             let s = lock(&sh.settings).clone();
             mapper.set(s.active().clone(), s.pad_mode, s.stadia);
             special.set(s.assistant, s.capture, s.stadia);
-            let ll = perf.apply(&s, dev);
-            if lock(&sh.status).ble_low_latency != ll {
-                sh.set_status(|st| st.ble_low_latency = ll);
-            }
+            perf.apply(&s);
             if s.hide_from_games != hide {
                 hide = s.hide_from_games;
+                watch.hide.store(hide, Ordering::Relaxed);
                 if hide {
                     sh.hide(&ids_to_hide(&enumerate_stadia()));
                 } else {
@@ -556,7 +601,11 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         }
 
         let now_ms = now_us() / 1000;
-        let timeout = special.next_deadline().map_or(1000, |d| d.saturating_sub(now_ms).min(1000)) as u32;
+        let mut timeout = special.next_deadline().map_or(1000, |d| d.saturating_sub(now_ms).min(1000)) as u32;
+        if let Some(due) = throttle.wake_in_ms(now_us()) {
+            // Wake in time to send the held-back pad event if no newer report comes first.
+            timeout = timeout.min(due as u32);
+        }
         let actions = match reader.next(timeout) {
             Ok(Some((data, arrival))) => match parse_input(&data) {
                 Some(state) => {
@@ -565,9 +614,10 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
                     pad.submit(&out);
                     stats.record(arrival, now_us());
                     last_state = state;
-                    if arrival.saturating_sub(last_pad_event) >= PAD_EVENT_INTERVAL_US && sh.subscribed() {
-                        last_pad_event = arrival;
-                        sh.emit(BridgeEvent::Pad { state, out });
+                    if let Some((state, out)) = throttle.report((state, out), arrival) {
+                        if sh.subscribed() {
+                            sh.emit(BridgeEvent::Pad { state, out });
+                        }
                     }
                     actions
                 }
@@ -585,25 +635,23 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         }
 
         let now = now_us();
+        if let Some((state, out)) = throttle.tick(now) {
+            if sh.subscribed() {
+                sh.emit(BridgeEvent::Pad { state, out });
+            }
+        }
         if now >= next_tick {
             next_tick = now + 1_000_000;
             if sh.subscribed() {
                 sh.emit(BridgeEvent::Stats(stats.snapshot()));
             }
-            // A second transport came up (e.g. Bluetooth while cabled): hide it too.
-            if hide {
-                sh.hide(&stadia_instance_ids());
-            }
-            // A cable plugged in while on Bluetooth: switch to USB (the outer loop picks it).
-            if dev.transport == Transport::Bluetooth
-                && usb_stadia_present()
-                && enumerate_stadia().iter().any(|d| d.transport == Transport::Usb)
-            {
-                log!("USB pad appeared, switching from Bluetooth");
-                break Ok(());
-            }
+        }
+        if watch.usb_appeared.load(Ordering::Relaxed) {
+            log!("USB pad appeared, switching from Bluetooth");
+            break Ok(());
         }
     };
+    watch.stop();
 
     *lock(&sh.writer) = None;
     drop(reader);
@@ -624,9 +672,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         s.battery = None;
         s.device = None;
         s.charging = false;
-        if s.ble_low_latency == LowLatencyState::Active {
-            s.ble_low_latency = LowLatencyState::Off;
-        }
+        s.link_ms = None;
     });
     result.or_else(|e| if sh.stopping() { Ok(()) } else { Err(e) })
 }
@@ -664,17 +710,6 @@ mod tests {
         assert_eq!(ids_to_hide(&d), vec!["bt".to_string(), "usb".to_string()]);
     }
 
-    #[test]
-    fn low_latency_not_retried_until_inputs_change() {
-        let mut r = LlRetry::default();
-        assert!(r.should_request(Some(1)));
-        r.failed();
-        assert!(!r.should_request(Some(1)), "a settings save must not re-block input on a refused request");
-        assert!(r.should_request(Some(2)), "a new pad / reconnect retries");
-        r.failed();
-        r.reset();
-        assert!(r.should_request(Some(2)), "toggling the setting retries");
-    }
 
     fn raw(version: u16, product: &str) -> RawDeviceInfo {
         RawDeviceInfo { vid: 0x18D1, pid: 0x9400, version, product: product.into(), serial: "99180YCAC5Q7QD".into() }
@@ -699,5 +734,27 @@ mod tests {
     #[test]
     fn identity_falls_back_when_the_pad_sends_no_product_string() {
         assert_eq!(identity(&raw(0x0100, ""), Transport::Usb).model, "Stadia Controller");
+    }
+
+    #[test]
+    fn throttle_never_loses_the_last_state() {
+        let mut t = PadThrottle::default();
+        assert_eq!(t.report("press", 0), Some("press"), "first report goes straight out");
+        assert_eq!(t.report("release", 5_000), None, "too soon: held");
+        assert_eq!(t.tick(10_000), None, "still inside the interval");
+        assert_eq!(t.wake_in_ms(10_000), Some(7), "wakes when the slot opens");
+        assert_eq!(t.tick(16_667), Some("release"), "held state goes out once due, with no new report");
+        assert_eq!(t.tick(40_000), None, "sent once");
+        assert_eq!(t.wake_in_ms(40_000), None);
+    }
+
+    #[test]
+    fn throttle_newer_report_replaces_the_held_one() {
+        let mut t = PadThrottle::default();
+        t.report(1, 0);
+        assert_eq!(t.report(2, 4_000), None);
+        assert_eq!(t.report(3, 8_000), None);
+        assert_eq!(t.report(4, 20_000), Some(4), "a due report goes out and clears the held one");
+        assert_eq!(t.tick(60_000), None);
     }
 }

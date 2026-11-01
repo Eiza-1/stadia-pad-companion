@@ -5,9 +5,5 @@ fn main() {
     println!("low_latency_supported = {}", pad_core::win::ble::low_latency_supported());
     println!("battery({addr:012X}) = {:?}", pad_core::win::ble::battery(addr));
     println!("firmware({addr:012X}) = {:?}", pad_core::win::ble::firmware_revision(addr));
-    match pad_core::win::ble::LowLatency::request(addr) {
-        Ok(_) => println!("low-latency request: Active"),
-        Err(s) => println!("low-latency request: {s:?}"),
-    }
-    println!("rate override driver = {}", pad_core::win::rate::override_driver_present());
+    println!("link({addr:012X}) = {:?}", pad_core::win::ble::link_params(addr));
 }
