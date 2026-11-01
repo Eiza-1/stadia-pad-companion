@@ -7,10 +7,19 @@ use std::sync::mpsc;
 
 #[path = "support/bench.rs"]
 mod bench;
+#[path = "support/triggers.rs"]
+mod triggers;
 
 fn main() {
     if std::env::args().any(|a| a == "--bench") {
         bench::run();
+        println!("
+Press Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        return;
+    }
+    if std::env::args().any(|a| a == "--triggers") {
+        triggers::run();
         println!("
 Press Enter to close.");
         let _ = std::io::stdin().read_line(&mut String::new());

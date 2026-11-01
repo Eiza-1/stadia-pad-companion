@@ -764,6 +764,29 @@ mod tests {
     }
 
     #[test]
+    fn fast_full_trigger_press_reaches_the_ui_while_held() {
+        // Measured on the pad: a full L2/R2 press ramps 0 -> 255 in a few 8 ms reports, then the pad goes
+        // quiet while the trigger is held. The UI must end on 255, not on a mid-ramp value.
+        let mut t = PadThrottle::default();
+        let mut shown = None;
+        for (i, raw) in [0u8, 90, 180, 240, 255].into_iter().enumerate() {
+            if let Some(v) = t.report(raw, i as u64 * 8_000) {
+                shown = Some(v);
+            }
+        }
+        assert_ne!(shown, Some(255), "the 60/s limit holds the last report back at first");
+        let mut now = 32_000;
+        while let Some(wait) = t.wake_in_ms(now) {
+            now += wait * 1000;
+            if let Some(v) = t.tick(now) {
+                shown = Some(v);
+            }
+        }
+        assert_eq!(shown, Some(255), "the held full press is shown with no further reports");
+        assert!(now <= 32_000 + 2 * PAD_EVENT_INTERVAL_US, "within two UI frames");
+    }
+
+    #[test]
     fn throttle_newer_report_replaces_the_held_one() {
         let mut t = PadThrottle::default();
         t.report(1, 0);
