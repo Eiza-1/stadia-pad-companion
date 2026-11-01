@@ -54,12 +54,10 @@ pub fn run() {
             t.was_click = click;
         }
     }
-    let mut text = format!("{:?}
-", d.transport);
+    let mut text = format!("{:?}\n", d.transport);
     for (name, t) in [("L2", &l), ("R2", &rt)] {
         text += &format!(
-            "{name}: full presses {}  raw peak {}  raw while clicked: min {:?}  game value peak {}  reports clicked {} of which game < 255: {}
-",
+            "{name}: full presses {}  raw peak {}  raw while clicked: min {:?}  game value peak {}  reports clicked {} of which game < 255: {}\n",
             t.presses, t.peak, t.click_raw_min, t.out_peak, t.clicked, t.click_not_full_out
         );
     }
