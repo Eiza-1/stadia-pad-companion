@@ -202,7 +202,7 @@ function battIcon(pct) {
   return pct >= 95 ? "battery_full" : `battery_${bars}_bar`;
 }
 
-/** Connection pill, battery chip, service chip and banners, from the bridge Status. */
+/** Connection pill, battery chip and banners (a missing ViGEmBus driver shows there), from the bridge Status. */
 export function renderStatus(s) {
   const conn = s.connection;
   const icon = conn === "Bluetooth" ? "bluetooth" : conn === "Usb" ? "usb" : "link_off";
@@ -230,11 +230,6 @@ export function renderStatus(s) {
     batt.hidden = true;
   }
   $("dhConn").textContent = conn ? (s.battery != null ? `${text} · ${s.battery}%` : text) : text;
-
-  const svc = $("svc");
-  svc.classList.toggle("off", !s.vigem_ok);
-  svc.firstChild.textContent = s.vigem_ok ? "ON" : "OFF";
-  svc.title = s.vigem_ok ? "Controller service is running" : "ViGEmBus driver missing";
 
   renderBanners(s);
   if (openPop === "fw") renderFirmware(s);

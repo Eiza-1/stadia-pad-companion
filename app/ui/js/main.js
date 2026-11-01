@@ -13,6 +13,8 @@ function goInside(inside) {
   // The hidden view still sits on top of the visible one; inert stops it taking clicks and focus.
   $("homeV").inert = inside;
   $("devV").inert = !inside;
+  // Home and the device tab only exist inside the configuration; on Home they'd do nothing.
+  $("homeBtn").inert = $("devTab").inert = !inside;
   if (inside) closePops();
   window.dispatchEvent(new Event("viewchange"));
 }

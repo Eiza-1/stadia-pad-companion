@@ -16,7 +16,8 @@ button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--primar
 .bar { height: 52px; display: flex; align-items: center; gap: 10px; padding: 0 8px 0 14px; position: relative; z-index: 5; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 8px; border-radius: 99px; background: var(--sc); font: 600 14px var(--font); font-stretch: 110%; }
 .brand img { height: 20px; }
-.home { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 99px; font: 500 13px var(--font); color: var(--on-sv); transition: background .2s; }
+.home { display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 14px; border-radius: 99px; font: 500 13px var(--font); color: var(--on-sv); opacity: 0; transform: scale(.8); pointer-events: none; transition: background .2s, opacity .45s var(--spring), transform .45s var(--spring); }
+body.inside .home { opacity: 1; transform: none; pointer-events: auto; }
 .home:hover { background: var(--sc); }
 .tab { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 16px; border-radius: 99px; background: var(--sc-high); font: 500 13px var(--font); opacity: 0; transform: scale(.8); pointer-events: none; transition: all .45s var(--spring); }
 .tab .ib { width: 26px; height: 26px; }
@@ -25,10 +26,6 @@ body.inside .tab { opacity: 1; transform: none; pointer-events: auto; }
 .bar .grow { flex: 1; align-self: stretch; }
 .ib { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; color: var(--on-sv); transition: background .2s, border-radius .4s var(--spring), color .2s; }
 .ib:hover { background: var(--sc-high); border-radius: 12px; color: var(--on-surface); }
-.svc { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 6px 0 14px; border-radius: 99px; background: color-mix(in srgb, var(--primary) 18%, transparent); color: var(--primary); font: 600 12px var(--font); letter-spacing: .4px; }
-.svc i { width: 24px; height: 24px; border-radius: 50%; background: var(--primary); display: block; }
-.svc.off { background: color-mix(in srgb, var(--error) 16%, transparent); color: var(--error); }
-.svc.off i { background: var(--error); }
 .win { display: flex; gap: 2px; margin-left: 6px; }
 .win .close:hover { background: #c42b1c; color: #fff; }
 
