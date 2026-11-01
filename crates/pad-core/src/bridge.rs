@@ -66,6 +66,8 @@ pub struct Status {
     pub hidhide_ok: bool,
     /// Bluetooth connection interval Windows negotiated (ms); `None` on USB or when unreadable.
     pub link_ms: Option<f32>,
+    /// Whether the connected pad accepts rumble (`false` over Bluetooth); `None` while disconnected.
+    pub rumble: Option<bool>,
     pub other_mappers: Vec<String>,
     /// Identity of the connected pad (for the Home firmware panel); `None` while disconnected.
     pub device: Option<PadIdentity>,
@@ -108,6 +110,7 @@ impl Default for Status {
             vigem_ok: true,
             hidhide_ok: true,
             link_ms: None,
+            rumble: None,
             other_mappers: Vec::new(),
             device: None,
         }
@@ -528,13 +531,23 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     let input = HidDevice::open_shared(&dev.path).map_err(io)?;
     let writer = Arc::new(HidDevice::open_writer(&dev.path).map_err(io)?);
     let out_len = writer.output_len;
-    *lock(&sh.writer) = Some((writer.clone(), out_len));
+    // Rumble is probed with an all-motors-off report (harmless). Over Bluetooth Windows rejects the pad's
+    // rumble report (error 87; apps are denied the HID GATT service, so there is no way around the
+    // driver; SDL disables Stadia rumble on Bluetooth too), so the session skips rumble entirely.
+    let rumble_ok = out_len > 0 && writer.write_output(&rumble_report(0, 0, out_len));
+    if !rumble_ok {
+        log!("rumble unavailable on {:?}: {}", dev.transport, std::io::Error::last_os_error());
+    }
+    *lock(&sh.writer) = rumble_ok.then(|| (writer.clone(), out_len));
 
     let w = writer.clone();
     let sh2 = sh.clone();
     let mut last_rumble = None;
     let mut failure_logged = false;
     let mut pad = VirtualPad::connect(move |large, small| {
+        if !rumble_ok {
+            return;
+        }
         let pct = sh2.rumble_pct.load(Ordering::Relaxed) as u32;
         let v = ((large as u32 * pct / 100) as u8, (small as u32 * pct / 100) as u8);
         if last_rumble == Some(v) || out_len == 0 {
@@ -566,6 +579,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     sh.set_status(|s| {
         s.vigem_ok = true;
         s.connection = Some(dev.transport);
+        s.rumble = Some(rumble_ok);
         s.device = ident;
         s.charging = dev.transport == Transport::Usb;
     });
@@ -657,7 +671,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
     drop(reader);
     // Drop the virtual pad first (joins the rumble thread), so no late rumble lands after the stop.
     drop(pad);
-    if out_len > 0 {
+    if rumble_ok {
         writer.write_output(&rumble_report(0, 0, out_len));
     }
     drop(perf);
@@ -673,6 +687,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         s.device = None;
         s.charging = false;
         s.link_ms = None;
+        s.rumble = None;
     });
     result.or_else(|e| if sh.stopping() { Ok(()) } else { Err(e) })
 }

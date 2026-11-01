@@ -43,6 +43,8 @@
 
 .btn { display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 20px; border-radius: 99px; background: var(--primary); color: var(--on-primary); font: 600 14px var(--font); transition: border-radius .4s var(--spring), filter .2s; }
 .btn:hover { border-radius: 14px; filter: brightness(1.08); }
+.btn.dis { opacity: .38; cursor: not-allowed; }
+.btn.dis:hover { border-radius: 99px; filter: none; }
 .btn.tonal { background: var(--sec-c); color: var(--on-surface); }
 .btn.text { background: transparent; color: var(--primary); padding: 0 12px; }
 .btn.text:hover { background: color-mix(in srgb, var(--primary) 10%, transparent); }

@@ -176,3 +176,50 @@ mod tests {
         assert_eq!(bt_addr_from_path(r"\\?\hid#vid_18d1&pid_9400&mi_01#7&abc#{x}"), None);
     }
 }
+
+/// Diagnostics for `bridge_cli --gatt`: what the pad's HID-over-GATT service exposes to apps (status,
+/// each characteristic's properties and its Report Reference: report id + type 1 in / 2 out / 3 feature).
+pub fn hid_gatt_probe(bt_addr: u64) -> Vec<String> {
+    use windows::Devices::Bluetooth::GenericAttributeProfile::GattCharacteristicProperties as P;
+    let mut out = Vec::new();
+    let run = |out: &mut Vec<String>| -> windows::core::Result<()> {
+        let device = BluetoothLEDevice::FromBluetoothAddressAsync(bt_addr)?.join()?;
+        let hid = GUID::from_u128(0x00001812_0000_1000_8000_00805f9b34fb);
+        let sr = device.GetGattServicesForUuidWithCacheModeAsync(hid, BluetoothCacheMode::Uncached)?.join()?;
+        out.push(format!("HID service query: {:?}, {} service(s)", sr.Status()?, sr.Services()?.Size()?));
+        for svc in sr.Services()? {
+            let cr = svc.GetCharacteristicsWithCacheModeAsync(BluetoothCacheMode::Uncached)?.join()?;
+            out.push(format!("  characteristics query: {:?}", cr.Status()?));
+            for ch in cr.Characteristics()? {
+                let props = ch.CharacteristicProperties()?;
+                let names: Vec<&str> = [(P::Read, "read"), (P::Write, "write"), (P::WriteWithoutResponse, "write-no-resp"), (P::Notify, "notify")]
+                    .into_iter()
+                    .filter(|(f, _)| props.contains(*f))
+                    .map(|(_, n)| n)
+                    .collect();
+                let mut refs = String::new();
+                if let Ok(dr) = ch.GetDescriptorsForUuidAsync(GUID::from_u128(0x00002908_0000_1000_8000_00805f9b34fb)).and_then(|a| a.join()) {
+                    for d in dr.Descriptors()? {
+                        if let Ok(v) = d.ReadValueWithCacheModeAsync(BluetoothCacheMode::Uncached).and_then(|a| a.join()) {
+                            if v.Status()? == GattCommunicationStatus::Success {
+                                let buf = v.Value()?;
+                                let mut b = vec![0u8; buf.Length()? as usize];
+                                DataReader::FromBuffer(&buf)?.ReadBytes(&mut b)?;
+                                refs = format!(" report-ref {b:02X?}");
+                            } else {
+                                refs = format!(" report-ref read {:?}", v.Status()?);
+                            }
+                        }
+                    }
+                }
+                out.push(format!("    {:?} [{}]{refs}", ch.Uuid()?, names.join(",")));
+            }
+        }
+        let _ = device.Close();
+        Ok(())
+    };
+    if let Err(e) = run(&mut out) {
+        out.push(format!("error: {e}"));
+    }
+    out
+}

@@ -16,6 +16,32 @@ Press Enter to close.");
         let _ = std::io::stdin().read_line(&mut String::new());
         return;
     }
+    if std::env::args().any(|a| a == "--gatt") {
+        for d in pad_core::win::hid::enumerate_stadia() {
+            if let Some(a) = pad_core::win::ble::bt_addr_from_path(&d.path) {
+                for l in pad_core::win::ble::hid_gatt_probe(a) {
+                    println!("{l}");
+                }
+            }
+        }
+        return;
+    }
+    if std::env::args().any(|a| a == "--hidcaps") {
+        for l in pad_core::win::hid::describe_stadia_interfaces() {
+            println!("{l}");
+        }
+        for d in pad_core::win::hid::enumerate_stadia() {
+            if let Ok(w) = pad_core::win::hid::HidDevice::open_writer(&d.path) {
+                let n = w.output_len;
+                drop(w);
+                for len in [n, 5, 10, 64].into_iter().filter(|&l| l > 0) {
+                    let r = pad_core::report::rumble_report(0, 0, len);
+                    println!("{:?} try {}", d.transport, pad_core::win::hid::try_output(&d.path, &r));
+                }
+            }
+        }
+        return;
+    }
     if std::env::args().any(|a| a == "--info") {
         for d in pad_core::win::hid::enumerate_stadia() {
             println!("{:?} {} {:?}", d.transport, d.path, pad_core::win::hid::read_device_info(&d.path));

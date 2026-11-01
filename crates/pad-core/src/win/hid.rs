@@ -10,7 +10,7 @@ use windows::Win32::Devices::DeviceAndDriverInstallation::{
 };
 use windows::Win32::Devices::HumanInterfaceDevice::{
     HidD_FreePreparsedData, HidD_GetAttributes, HidD_GetHidGuid, HidD_GetProductString, HidD_GetSerialNumberString,
-    HIDD_ATTRIBUTES, HidD_GetPreparsedData, HidD_SetNumInputBuffers, HidD_SetOutputReport,
+    HIDD_ATTRIBUTES, HidP_GetValueCaps, HidP_Output, HIDP_VALUE_CAPS, HidD_GetPreparsedData, HidD_SetNumInputBuffers, HidD_SetOutputReport,
     HidP_GetCaps, HIDP_CAPS, HIDP_STATUS_SUCCESS, PHIDP_PREPARSED_DATA,
 };
 use windows::Win32::Foundation::{CloseHandle, ERROR_IO_PENDING, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
@@ -306,4 +306,67 @@ impl HidDevice {
 /// Opens a Stadia HID path just long enough to read its identity (no read/write access needed).
 pub fn read_device_info(path: &str) -> Option<RawDeviceInfo> {
     HidDevice::open(path, false).ok()?.device_info()
+}
+
+/// Diagnostics for `bridge_cli --hidcaps`: every present Stadia HID interface with its top-level usage,
+/// report lengths and output value fields (report id, usage, bits x count). Opens no read access.
+pub fn describe_stadia_interfaces() -> Vec<String> {
+    let mut out = Vec::new();
+    for p in hid_interface_paths().into_iter().filter(|p| is_stadia(p)) {
+        let Ok(d) = HidDevice::open(&p, false) else {
+            out.push(format!("{p}
+    (could not open: {})", io::Error::last_os_error()));
+            continue;
+        };
+        let mut line = format!("{p}
+");
+        unsafe {
+            let mut pp = PHIDP_PREPARSED_DATA::default();
+            if HidD_GetPreparsedData(d.handle, &mut pp) {
+                let mut c = HIDP_CAPS::default();
+                if HidP_GetCaps(pp, &mut c) == HIDP_STATUS_SUCCESS {
+                    line += &format!(
+                        "    usage {:04X}:{:04X}  input {} B  output {} B  feature {} B  output value caps {}
+",
+                        c.UsagePage, c.Usage, c.InputReportByteLength, c.OutputReportByteLength, c.FeatureReportByteLength, c.NumberOutputValueCaps
+                    );
+                    let mut n = c.NumberOutputValueCaps;
+                    if n > 0 {
+                        let mut v = vec![HIDP_VALUE_CAPS::default(); n as usize];
+                        if HidP_GetValueCaps(HidP_Output, v.as_mut_ptr(), &mut n, pp) == HIDP_STATUS_SUCCESS {
+                            for vc in &v[..n as usize] {
+                                let usage = if vc.IsRange { vc.Anonymous.Range.UsageMin } else { vc.Anonymous.NotRange.Usage };
+                                line += &format!(
+                                    "      out id 0x{:02X}  usage {:04X}:{:04X}  {} bits x {}
+",
+                                    vc.ReportID, vc.UsagePage, usage, vc.BitSize, vc.ReportCount
+                                );
+                            }
+                        }
+                    }
+                }
+                let _ = HidD_FreePreparsedData(pp);
+            }
+        }
+        out.push(line);
+    }
+    out
+}
+
+/// Diagnostics: tries a zero-rumble output (all motors off, harmless) both ways and reports each result.
+pub fn try_output(path: &str, report: &[u8]) -> String {
+    let Ok(d) = HidDevice::open(path, false) else { return format!("open failed: {}", io::Error::last_os_error()) };
+    unsafe {
+        let mut written = 0u32;
+        let wf = match WriteFile(d.handle, Some(report), Some(&mut written), None) {
+            Ok(()) => format!("WriteFile ok ({written} B)"),
+            Err(e) => format!("WriteFile err {e}"),
+        };
+        let so = if HidD_SetOutputReport(d.handle, report.as_ptr() as *const c_void, report.len() as u32) {
+            "SetOutputReport ok".to_string()
+        } else {
+            format!("SetOutputReport err {}", io::Error::last_os_error())
+        };
+        format!("{} B id 0x{:02X}: {wf}; {so}", report.len(), report.first().copied().unwrap_or(0))
+    }
 }
