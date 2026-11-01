@@ -8,10 +8,12 @@ Each original is a product photo on a white background. For each one:
   3. each colour's measured button centres (POINTS below), carried through that move, are written to
      app/ui/js/pad-points.js.
 
-Run: python scripts/make_pad_images.py   (needs Pillow)
+Run: python scripts/make_pad_images.py   (needs Pillow, numpy, opencv-python-headless)
 """
 from pathlib import Path
-from PIL import Image, ImageDraw, ImageFilter, ImageChops
+import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "art" / "pads"
@@ -46,12 +48,16 @@ PADS = {
     "ClearlyWhite": "clearly-white.jpg",
 }
 
-def cut_out(im: Image.Image) -> Image.Image:
+SUPER = 4            # cut-out is computed at 4x the source resolution, then downsampled (true anti-aliasing)
+SAVE = 1.5           # PNGs are saved at 1.5x the layout width (1320 px) so they stay sharp on HiDPI screens
+
+def measure_box(im: Image.Image):
+    """The pad's bounding box in source pixels, by the method the POINTS table was measured with
+    (hard flood-fill mask, 2 px erosion, light blur, alpha > 24). Only used to place the crop."""
     rgb = im.convert("RGB")
     w, h = rgb.size
     work = rgb.copy()
     key = (255, 0, 255)
-    # Flood from every edge pixel that is still background-coloured.
     for x in range(0, w, 4):
         for y in (0, h - 1):
             if work.getpixel((x, y)) != key:
@@ -60,34 +66,94 @@ def cut_out(im: Image.Image) -> Image.Image:
         for x in (0, w - 1):
             if work.getpixel((x, y)) != key:
                 ImageDraw.floodfill(work, (x, y), key, thresh=FILL_TOL)
-    bg = Image.new("L", (w, h), 0)
-    pixels = work.get_flattened_data() if hasattr(work, "get_flattened_data") else work.getdata()
-    bg.putdata([255 if p == key else 0 for p in pixels])
-    alpha = ImageChops.invert(bg)
-    # Shrink past the light fringe the white background leaves on the outline, then soften for
-    # anti-aliasing.
-    alpha = alpha.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(0.9))
-    # Decontaminate the edge: semi-transparent pixels still hold some of the white background; remove
-    # it (colour = (c - (1 - a) * white) / a) so the outline doesn't glow on the app's dark background.
-    src = rgb.get_flattened_data() if hasattr(rgb, "get_flattened_data") else rgb.getdata()
-    al = alpha.get_flattened_data() if hasattr(alpha, "get_flattened_data") else alpha.getdata()
-    px = []
-    for (r, g, b), a in zip(src, al):
-        if 0 < a < 255:
-            f = a / 255
-            r, g, b = (max(0, min(255, round((c - (1 - f) * 255) / f))) for c in (r, g, b))
-        px.append((r, g, b, a))
-    out = Image.new("RGBA", rgb.size)
-    out.putdata(px)
-    return out
+    a = np.array(work)
+    fg = Image.fromarray(np.where((a == key).all(-1), 0, 255).astype(np.uint8), "L")
+    fg = fg.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(0.9))
+    return fg.point(lambda v: 255 if v > 24 else 0).getbbox()
+
+def cut_out(im: Image.Image) -> Image.Image:
+    """Cuts a product photo off its white background with a smooth, anti-aliased outline.
+
+    The small JPEG/WebP originals have noisy, blocky edges; a per-pixel mask follows that noise and
+    looks jagged. Instead: denoise lightly, upscale 4x (Lanczos), flood-fill the background at that
+    scale, smooth the outline as a curve (blur + re-threshold), pull it inside the white fringe, and
+    let the later downsample produce the anti-aliased edge. Edge colours are taken from the pad's own
+    interior, so no white halo shows on the dark UI."""
+    rgb = np.array(im.convert("RGB"))
+    rgb = cv2.fastNlMeansDenoisingColored(rgb, None, 4, 4, 5, 15)   # remove JPEG blocking, keep detail
+    h, w = rgb.shape[:2]
+    big = cv2.resize(rgb, (w * SUPER, h * SUPER), interpolation=cv2.INTER_LANCZOS4)
+    H, W = big.shape[:2]
+    # Background = everything connected to the border that is close to the border's white.
+    ff = np.zeros((H + 2, W + 2), np.uint8)
+    tol = (FILL_TOL,) * 3
+    flags = 4 | cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | (255 << 8)
+    work = big.copy()
+    for x in range(W):
+        for y in (0, H - 1):
+            if ff[y + 1, x + 1] == 0 and big[y, x].min() > 200:
+                cv2.floodFill(work, ff, (x, y), 0, tol, tol, flags)
+    for y in range(H):
+        for x in (0, W - 1):
+            if ff[y + 1, x + 1] == 0 and big[y, x].min() > 200:
+                cv2.floodFill(work, ff, (x, y), 0, tol, tol, flags)
+    fg = (ff[1:-1, 1:-1] == 0).astype(np.float32)
+    # Some photos crop the grips at the frame; the outer 3 px there are backdrop or rim light.
+    b = 3 * SUPER
+    fg[:b], fg[-b:], fg[:, :b], fg[:, -b:] = 0, 0, 0, 0
+    # Work on a zero-padded copy: OpenCV's morphology treats outside-the-image as foreground, which
+    # would let the pad grow back out to the frame.
+    P = 12 * SUPER
+    fg = cv2.copyMakeBorder(fg, P, P, P, P, cv2.BORDER_CONSTANT, value=0)
+    big = cv2.copyMakeBorder(big, P, P, P, P, cv2.BORDER_REPLICATE)
+    # Keep only the pad itself (largest blob) and fill pin-holes inside it.
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8), 8)
+    if n > 1:
+        fg = (lab == 1 + np.argmax(stats[1:, cv2.CC_STAT_AREA])).astype(np.float32)
+    # Close dents where a light pad edge melts into the white backdrop, then smooth the outline as a
+    # curve (blur ~3 source px, re-threshold): removes stair-steps and compression bumps.
+    close = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(6 * SUPER) | 1,) * 2)
+    fg = cv2.morphologyEx(fg, cv2.MORPH_CLOSE, close)
+    sm = cv2.GaussianBlur(fg, (0, 0), 3 * SUPER)
+    fg = (sm > 0.5).astype(np.float32)
+    # Pull the edge ~1.5 source px inward, past the light fringe the white backdrop leaves.
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(3 * SUPER) | 1,) * 2)
+    fg = cv2.erode(fg, k)
+    # A hair of softness at 4x becomes a clean ~1 px anti-aliased edge after the downsample.
+    alpha = cv2.GaussianBlur(fg, (0, 0), 0.6 * SUPER)
+    # Edge colour: pixels near the outline still mix in the white backdrop; replace them with the
+    # average colour of the pad just inside (colour bleed), weighted by how deep inside they are.
+    inner = cv2.erode(fg, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(3 * SUPER) | 1,) * 2))
+    f = big.astype(np.float32)
+    acc = cv2.GaussianBlur(f * inner[..., None], (0, 0), 2.5 * SUPER)
+    wgt = cv2.GaussianBlur(inner, (0, 0), 2.5 * SUPER)[..., None]
+    bleed = acc / np.maximum(wgt, 1e-4)
+    depth = cv2.GaussianBlur(inner, (0, 0), 0.8 * SUPER)[..., None]
+    col = f * depth + bleed * (1 - depth)
+    out = np.dstack([np.clip(col, 0, 255), alpha * 255]).astype(np.uint8)
+    out = out[P:-P, P:-P]
+    res = Image.fromarray(out, "RGBA")
+    # Crop box for normalise(): measured exactly as when POINTS were measured (see measure_box), so
+    # the button positions stay valid whatever the cut-out does.
+    res.info["box"] = tuple(v * SUPER for v in measure_box(im))
+    return res
 
 def normalise(im: Image.Image) -> Image.Image:
-    box = im.getchannel("A").point(lambda a: 255 if a > 24 else 0).getbbox()
-    pad = im.crop(box)
-    inner = round(WIDTH * (1 - 2 * MARGIN))
-    scaled = pad.resize((inner, round(pad.height * inner / pad.width)), Image.LANCZOS)
-    m = round(WIDTH * MARGIN)
-    canvas = Image.new("RGBA", (WIDTH, scaled.height + 2 * m), (0, 0, 0, 0))
+    """Crops to the pad and scales it to the output width (SAVE x layout width) with a margin."""
+    width = round(WIDTH * SAVE)
+    box = im.info.get("box") or im.getchannel("A").point(lambda a: 255 if a > 24 else 0).getbbox()
+    pad = np.array(im.crop(box)).astype(np.float32)
+    # The edge pixels already carry the pad's own colour (see cut_out), so colour and alpha can be
+    # resized straight without a dark or white fringe.
+    inner = round(width * (1 - 2 * MARGIN))
+    size = (inner, round(pad.shape[0] * inner / pad.shape[1]))
+    sc = cv2.resize(pad, size, interpolation=cv2.INTER_AREA)
+    # Gentle unsharp mask restores the crispness lost in the source's compression.
+    blur = cv2.GaussianBlur(sc[..., :3], (0, 0), 1.2)
+    sc[..., :3] = sc[..., :3] + 0.2 * (sc[..., :3] - blur)
+    scaled = Image.fromarray(np.clip(sc, 0, 255).astype(np.uint8), "RGBA")
+    m = round(width * MARGIN)
+    canvas = Image.new("RGBA", (width, scaled.height + 2 * m), (0, 0, 0, 0))
     canvas.alpha_composite(scaled, (m, m))
     return canvas
 
@@ -109,7 +175,8 @@ def align(img: Image.Image, name: str, size):
     moved = [(round(s * x + tx), round(s * y + ty)) for x, y in POINTS[name]]
     miss = max(((a - c) ** 2 + (b - d) ** 2) ** 0.5 for (a, b), (c, d) in zip(moved, POINTS[REFERENCE]))
     print(f"  {name}: scale {s:.3f}, shift ({tx:+.1f}, {ty:+.1f}); buttons now within {miss:.0f} px of {REFERENCE}")
-    out = img.transform(size, Image.AFFINE, (1 / s, 0, -tx / s, 0, 1 / s, -ty / s), resample=Image.BICUBIC)
+    tx2, ty2 = tx * SAVE, ty * SAVE
+    out = img.transform(size, Image.AFFINE, (1 / s, 0, -tx2 / s, 0, 1 / s, -ty2 / s), resample=Image.BICUBIC)
     return out, moved
 
 def points_js(heights) -> str:
@@ -149,7 +216,7 @@ def main() -> None:
         else:
             out, POINTS_OUT[name] = align(img, name, size)
         out.save(OUT / f"{name}.png", optimize=True)
-        heights[name] = out.size[1]
+        heights[name] = round(out.size[1] / SAVE)
         print(f"{name}: {PADS[name]} -> {out.size[0]}x{out.size[1]}")
     (ROOT / "app" / "ui" / "js" / "pad-points.js").write_text(points_js(heights), encoding="utf-8", newline="\n")
     print("wrote app/ui/js/pad-points.js")

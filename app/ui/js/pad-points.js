@@ -2,7 +2,7 @@
 // Control centres and highlight radii in each pad photo's own pixels (880 px wide).
 
 export const PAD_W = 880;
-export const PAD_H = { JustBlack: 593, Wasabi: 593, NightBlue: 593, ClearlyWhite: 593 };
+export const PAD_H = { JustBlack: 591, Wasabi: 591, NightBlue: 591, ClearlyWhite: 591 };
 
 export const POINTS = {
   JustBlack: { DPAD_UP: [220, 105, 19], DPAD_DOWN: [220, 185, 19], DPAD_LEFT: [180, 145, 19], DPAD_RIGHT: [260, 145, 19], Y: [687, 94, 26], X: [633, 142, 26], B: [744, 146, 26], A: [689, 194, 26], L3: [320, 241, 46], R3: [587, 241, 46], OPTIONS: [356, 88, 19], MENU: [547, 88, 19], ASSISTANT: [391, 144, 16], CAPTURE: [513, 144, 16], STADIA: [449, 253, 28], LB: [200, 24, 0], RB: [683, 24, 0], L2_CLICK: [200, -30, 0], R2_CLICK: [683, -30, 0] },
