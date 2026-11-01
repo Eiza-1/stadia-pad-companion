@@ -9,10 +9,19 @@ use std::sync::mpsc;
 mod bench;
 #[path = "support/triggers.rs"]
 mod triggers;
+#[path = "support/sticks.rs"]
+mod sticks;
 
 fn main() {
     if std::env::args().any(|a| a == "--bench") {
         bench::run();
+        println!("
+Press Enter to close.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+        return;
+    }
+    if std::env::args().any(|a| a == "--sticks") {
+        sticks::run();
         println!("
 Press Enter to close.");
         let _ = std::io::stdin().read_line(&mut String::new());
