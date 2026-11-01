@@ -10,10 +10,11 @@ const MARKUP = `
     <path data-k="LB" d="M78 58 Q92 30 140 30 L170 34 L160 52 Z" fill="var(--b2)"/>
     <path data-k="RB" d="M362 58 Q348 30 300 30 L270 34 L280 52 Z" fill="var(--b2)"/>
     <path d="${SHELL}" fill="var(--b)"/>
-    <path d="${SHELL}" fill="url(#padShade)"/>
+    <path d="${SHELL}" fill="url(#padShade)" style="opacity: var(--sh, 1)"/>
+    <path d="${SHELL}" fill="none" stroke="var(--rim, transparent)" stroke-width="1.5"/>
   </g>
   <circle cx="104" cy="118" r="38" fill="var(--b2)" opacity=".55"/>
-  <g fill="var(--k)">
+  <g fill="var(--k)" stroke="var(--ks, transparent)" stroke-width="1">
     <rect data-k="DPAD_UP" x="95" y="86" width="18" height="27" rx="5"/>
     <rect data-k="DPAD_DOWN" x="95" y="123" width="18" height="27" rx="5"/>
     <rect data-k="DPAD_LEFT" x="72" y="109" width="27" height="18" rx="5"/>
@@ -21,7 +22,7 @@ const MARKUP = `
     <rect x="95" y="109" width="18" height="18"/>
   </g>
   <circle cx="336" cy="118" r="40" fill="var(--b2)" opacity=".55"/>
-  <g fill="var(--k)">
+  <g fill="var(--k)" stroke="var(--ks, transparent)" stroke-width="1">
     <circle data-k="A" cx="336" cy="144" r="13"/><circle data-k="B" cx="362" cy="118" r="13"/>
     <circle data-k="X" cx="310" cy="118" r="13"/><circle data-k="Y" cx="336" cy="92" r="13"/>
   </g>
@@ -30,15 +31,15 @@ const MARKUP = `
     <text x="336" y="148">A</text><text x="362" y="122">B</text><text x="310" y="122">X</text><text x="336" y="96">Y</text>
   </g>
   <circle cx="168" cy="170" r="30" fill="var(--b2)"/>
-  <g class="stick" data-s="l"><circle data-k="L3" cx="168" cy="170" r="21" fill="var(--k)"/><circle cx="168" cy="170" r="21" fill="url(#padCap)" pointer-events="none"/><circle cx="168" cy="170" r="13" fill="none" stroke="var(--b2)" stroke-width="1.5" opacity=".6"/></g>
+  <g class="stick" data-s="l"><circle data-k="L3" cx="168" cy="170" r="21" fill="var(--k)" stroke="var(--ks, transparent)"/><circle cx="168" cy="170" r="21" fill="url(#padCap)" pointer-events="none"/><circle cx="168" cy="170" r="13" fill="none" stroke="var(--b2)" stroke-width="1.5" opacity=".6"/></g>
   <circle cx="272" cy="170" r="30" fill="var(--b2)"/>
-  <g class="stick" data-s="r"><circle data-k="R3" cx="272" cy="170" r="21" fill="var(--k)"/><circle cx="272" cy="170" r="21" fill="url(#padCap)" pointer-events="none"/><circle cx="272" cy="170" r="13" fill="none" stroke="var(--b2)" stroke-width="1.5" opacity=".6"/></g>
-  <circle data-k="STADIA" cx="220" cy="104" r="15" fill="var(--k)"/>
+  <g class="stick" data-s="r"><circle data-k="R3" cx="272" cy="170" r="21" fill="var(--k)" stroke="var(--ks, transparent)"/><circle cx="272" cy="170" r="21" fill="url(#padCap)" pointer-events="none"/><circle cx="272" cy="170" r="13" fill="none" stroke="var(--b2)" stroke-width="1.5" opacity=".6"/></g>
+  <circle data-k="STADIA" cx="220" cy="104" r="15" fill="var(--k)" stroke="var(--ks, transparent)"/>
   <image href="assets/stadia.svg" x="208" y="96" width="24" height="16" pointer-events="none"/>
-  <circle data-k="ASSISTANT" cx="192" cy="134" r="7" fill="var(--k)"/>
-  <circle data-k="CAPTURE" cx="248" cy="134" r="7" fill="var(--k)"/>
-  <rect data-k="OPTIONS" x="180" y="78" width="16" height="7" rx="3.5" fill="var(--k)"/>
-  <rect data-k="MENU" x="244" y="78" width="16" height="7" rx="3.5" fill="var(--k)"/>
+  <circle data-k="ASSISTANT" cx="192" cy="134" r="7" fill="var(--k)" stroke="var(--ks, transparent)"/>
+  <circle data-k="CAPTURE" cx="248" cy="134" r="7" fill="var(--k)" stroke="var(--ks, transparent)"/>
+  <rect data-k="OPTIONS" x="180" y="78" width="16" height="7" rx="3.5" fill="var(--k)" stroke="var(--ks, transparent)"/>
+  <rect data-k="MENU" x="244" y="78" width="16" height="7" rx="3.5" fill="var(--k)" stroke="var(--ks, transparent)"/>
   <rect x="208" y="60" width="24" height="3" rx="1.5" fill="var(--led)" class="led"/>`;
 
 /** Centre of each control in viewBox units (440×290), for hotspots. */
@@ -59,7 +60,10 @@ export function renderPad(svgEl, colors) {
 }
 
 export function colorPad(svgEl, c) {
-  for (const k of ["b", "b2", "k", "t", "led"]) svgEl.style.setProperty(`--${k}`, c[k]);
+  for (const k of ["b", "b2", "k", "t", "led", "ks", "rim", "sh", "hi"]) {
+    if (c[k]) svgEl.style.setProperty(`--${k}`, c[k]);
+    else svgEl.style.removeProperty(`--${k}`); // e.g. no "hi": pressed keys use the scheme primary
+  }
 }
 
 const pressedOf = (buttons) => new Set(buttons ? String(buttons).split(" | ") : []);

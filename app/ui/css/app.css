@@ -56,10 +56,13 @@ body.inside #homeV { opacity: 0; transform: scale(.94); pointer-events: none; }
 body.inside #devV { opacity: 1; transform: none; pointer-events: auto; }
 
 /* ---------- home card ---------- */
-.devcard { width: 500px; border-radius: 32px; background: color-mix(in srgb, var(--sc) 72%, transparent); backdrop-filter: blur(30px) saturate(1.3); border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent); box-shadow: 0 40px 90px rgba(0, 0, 0, .5); transition: transform .5s var(--spring), border-radius .5s var(--spring); position: relative; }
-.devcard:hover { transform: translateY(-4px); border-radius: 40px; }
+.devcard { width: 500px; border-radius: 32px; background: color-mix(in srgb, var(--sc) 72%, transparent); backdrop-filter: blur(30px) saturate(1.3); border: 1px solid color-mix(in srgb, var(--on-surface) 10%, transparent); box-shadow: 0 40px 90px rgba(0, 0, 0, .5); transition: transform .8s var(--emph), box-shadow .8s var(--emph); position: relative; }
+.devcard:hover { transform: translateY(-3px); box-shadow: 0 48px 100px rgba(0, 0, 0, .55); }
 .stage { height: 330px; position: relative; display: grid; place-items: center; cursor: pointer; border-radius: 32px 32px 0 0; overflow: hidden; }
-.stage::before { content: ""; position: absolute; width: 360px; height: 200px; border-radius: 50%; background: var(--glow); filter: blur(70px); opacity: .35; transition: background .9s var(--emph); }
+.stage::before { content: ""; position: absolute; width: 360px; height: 200px; border-radius: 50%; background: var(--glow); filter: blur(70px); opacity: .35; transition: background .9s var(--emph), opacity .9s var(--emph), transform .9s var(--emph); }
+.stage:hover::before { opacity: .5; transform: scale(1.08); }
+/* Hover tilt: --rx/--ry/--s are eased toward the pointer every frame in home.js, so no CSS transition here. */
+.tilt { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--s, 1)); will-change: transform; }
 .padwrap { position: relative; width: 420px; animation: float 6s ease-in-out infinite; }
 .padwrap svg { width: 100%; display: block; }
 .padwrap .next { position: absolute; inset: 0; --r: 0%;

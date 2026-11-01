@@ -6,7 +6,7 @@ import { settings, status, save, invoke, onStatus, toast } from "./ipc.js";
 
 const $ = (id) => document.getElementById(id);
 const BLE_HINT = "Plug in the cable, or hold Stadia + Y for 2 s to pair over Bluetooth.";
-const MANUAL_URL = "https://support.google.com/stadia/answer/";
+const MANUAL_URL = "https://support.google.com/stadia/answer/9565956?hl=en";
 
 // Home popovers (palette, firmware): one open at a time, each grows out of the button that opened it.
 const pops = {};
@@ -161,10 +161,40 @@ export function initHome(goInside) {
   };
   $("manBtn").onclick = () => invoke("open_external", { url: MANUAL_URL }).catch(() => toast("Couldn't open the manual", "error"));
 
+  hoverTilt($("stage"), $("tilt"));
   $("stage").onclick = () => goInside(true);
   $("stage").onkeydown = (e) => (e.key === "Enter" || e.key === " ") && goInside(true);
 
   onStatus(renderStatus);
+}
+
+/** The Home pad leans toward the pointer and grows a little; eased per frame so it glides, never snaps. */
+function hoverTilt(stage, el) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const target = { rx: 0, ry: 0, s: 1 }, now = { rx: 0, ry: 0, s: 1 };
+  let frame = null;
+  const step = () => {
+    let moving = false;
+    for (const k of ["rx", "ry", "s"]) {
+      now[k] += (target[k] - now[k]) * 0.09;
+      if (Math.abs(target[k] - now[k]) > 0.0005) moving = true;
+      else now[k] = target[k];
+    }
+    el.style.setProperty("--rx", `${now.rx.toFixed(3)}deg`);
+    el.style.setProperty("--ry", `${now.ry.toFixed(3)}deg`);
+    el.style.setProperty("--s", now.s.toFixed(4));
+    frame = moving ? requestAnimationFrame(step) : null;
+  };
+  const kick = () => (frame ??= requestAnimationFrame(step));
+  stage.addEventListener("pointermove", (e) => {
+    const r = stage.getBoundingClientRect();
+    const nx = ((e.clientX - r.left) / r.width) * 2 - 1, ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+    Object.assign(target, { rx: -ny * 6, ry: nx * 8, s: 1.035 });
+    kick();
+  });
+  const settle = () => { Object.assign(target, { rx: 0, ry: 0, s: 1 }); kick(); };
+  stage.addEventListener("pointerleave", settle);
+  stage.addEventListener("click", settle); // Home fades out without a pointerleave; come back level
 }
 
 function battIcon(pct) {

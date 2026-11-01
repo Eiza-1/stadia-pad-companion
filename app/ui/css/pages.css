@@ -53,10 +53,10 @@
 
 /* ---------- live pad on pages ---------- */
 svg.pad [data-k] { transition: fill .12s; }
-svg.pad [data-k].on { fill: var(--primary); filter: drop-shadow(0 0 6px var(--primary)); }
+svg.pad [data-k].on { fill: var(--hi, var(--primary)); filter: drop-shadow(0 0 6px var(--hi, var(--primary))); }
 svg.pad .stick { transition: transform .05s linear; transform-box: view-box; }
 svg.pad .trig .track { fill: color-mix(in srgb, var(--on-surface) 12%, transparent); }
-svg.pad .trig .fill { fill: var(--primary); transform: scaleX(0); transform-box: fill-box; transform-origin: left; transition: transform .05s linear; }
+svg.pad .trig .fill { fill: var(--hi, var(--primary)); transform: scaleX(0); transform-box: fill-box; transform-origin: left; transition: transform .05s linear; }
 svg.pad .trig[data-t="r2"] .fill { transform-origin: right; }
 
 /* ---------- mapping ---------- */
