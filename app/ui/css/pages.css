@@ -54,10 +54,14 @@
 .note-box .ms { font-size: 18px; }
 
 /* ---------- live pad on pages ---------- */
-svg.pad [data-k] { transition: fill .12s; }
-svg.pad [data-k].on { fill: var(--hi, var(--primary)); filter: drop-shadow(0 0 6px var(--hi, var(--primary))); }
-svg.pad .stick { transition: transform .05s linear; transform-box: view-box; }
-svg.pad .trig .track { fill: color-mix(in srgb, var(--on-surface) 12%, transparent); }
+/* Pad photo + live overlays (pad.js). Hotspots are invisible until their control is pressed. */
+svg.pad image { filter: drop-shadow(0 18px 22px rgba(0, 0, 0, .45)); }
+svg.pad .hot { fill: transparent; stroke: transparent; stroke-width: 4; transition: fill .12s, stroke .12s; }
+svg.pad .hot.on { fill: color-mix(in srgb, var(--hi, var(--primary)) 42%, transparent); stroke: var(--hi, var(--primary)); filter: drop-shadow(0 0 10px var(--hi, var(--primary))); }
+svg.pad .thumb { fill: var(--hi, var(--primary)); stroke: #fff; stroke-width: 3; opacity: 0; transition: transform .05s linear, opacity .2s; }
+svg.pad .thumb.show { opacity: .95; }
+svg.pad .trig .track { fill: color-mix(in srgb, var(--on-surface) 12%, transparent); transition: fill .12s; }
+svg.pad .trig .track.on { fill: color-mix(in srgb, var(--hi, var(--primary)) 30%, transparent); }
 svg.pad .trig .fill { fill: var(--hi, var(--primary)); transform: scaleX(0); transform-box: fill-box; transform-origin: left; transition: transform .05s linear; }
 svg.pad .trig[data-t="r2"] .fill { transform-origin: right; }
 

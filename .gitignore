@@ -2,3 +2,4 @@ target/
 node_modules/
 .superpowers/
 app/src-tauri/gen/
+__pycache__/

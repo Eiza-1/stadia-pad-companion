@@ -65,10 +65,9 @@ body.inside #devV { opacity: 1; transform: none; pointer-events: auto; }
 .tilt { transform: perspective(900px) rotateX(var(--rx, 0deg)) rotateY(var(--ry, 0deg)) scale(var(--s, 1)); will-change: transform; }
 .padwrap { position: relative; width: 420px; animation: float 6s ease-in-out infinite; }
 .padwrap svg { width: 100%; display: block; }
-.padwrap .next { position: absolute; inset: 0; --r: 0%;
-  -webkit-mask: radial-gradient(circle at var(--mx, 50%) var(--my, 60%), #000 calc(var(--r) - 12%), transparent var(--r));
-  mask: radial-gradient(circle at var(--mx, 50%) var(--my, 60%), #000 calc(var(--r) - 12%), transparent var(--r)); }
-.padwrap .next.go { transition: --r .9s var(--emph); --r: 160%; }
+/* Colour change: the new pad photo sweeps down over the old one, top to bottom (~0.85 s, eased). */
+.padwrap .next { position: absolute; inset: 0; clip-path: inset(0 0 100% 0); }
+.padwrap .next.go { clip-path: inset(0 0 0 0); transition: clip-path .85s cubic-bezier(.65, 0, .35, 1); }
 /* Endless decorative motion pauses while the window isn't in use, and Home's while it is hidden. */
 body.still .amb b, body.still .padwrap, body.still .cpill.live::after, body.inside .padwrap, body.inside .cpill.live::after { animation-play-state: paused; }
 @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }

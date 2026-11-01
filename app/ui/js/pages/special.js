@@ -2,7 +2,7 @@
 // with Game Bar, Steam, NVIDIA or AMD, Stadia → Guide (+ hold).
 
 import { renderPad } from "../pad.js";
-import { SCHEMES, current } from "../theme.js";
+import { current } from "../theme.js";
 import { settings, save, invoke, onSettings } from "../ipc.js";
 import { h, seg } from "../ui.js";
 
@@ -30,7 +30,7 @@ export function init(el) {
   el.innerHTML = `<h1>Special buttons</h1><p class="lede">The Assistant and Capture buttons have real jobs here. They never reach the game, so they can't trigger anything by accident.</p>`;
   const pad = h(`<svg class="minipad"></svg>`);
   el.append(pad);
-  renderPad(pad, SCHEMES[current].pad);
+  renderPad(pad, current);
 
   const grid = h(`<div class="grid3"></div>`);
   const card = (icon, title, text, key, options) => {

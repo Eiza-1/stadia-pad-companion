@@ -11,7 +11,6 @@
   font-weight: 100 700;
   font-display: block;
 }
-@property --r { syntax: "<percentage>"; inherits: false; initial-value: 0%; }
 
 :root {
   --spring: cubic-bezier(.34, 1.56, .64, 1);

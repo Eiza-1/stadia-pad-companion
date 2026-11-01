@@ -1,6 +1,7 @@
-// Home: the device card, live connection/battery pills, palette with colour diffusion, driver banners.
+// Home: the device card (real pad photo), live connection/battery pills, palette with a top-to-bottom
+// colour wipe, firmware and manual, driver banners.
 
-import { renderPad, colorPad, applyPadState } from "./pad.js";
+import { renderPad, colorPad, applyPadState, preloadPads } from "./pad.js";
 import { SCHEMES, applyScheme, current } from "./theme.js";
 import { settings, status, save, invoke, onStatus, toast } from "./ipc.js";
 
@@ -81,28 +82,28 @@ function renderFirmware(s) {
 export function initHome(goInside) {
   const cur = document.querySelector("#pw .cur");
   const next = document.querySelector("#pw .next");
-  renderPad(cur, SCHEMES[settings.pad_color]?.pad);
-  renderPad(next);
+  renderPad(cur, settings.pad_color);
+  renderPad(next, settings.pad_color);
+  preloadPads();
 
-  // Palette: hovering a colour previews it on the pad (diffusing from the cursor); a click keeps it,
-  // and closing without one goes back to the saved colour.
+  // Palette: clicking a colour sweeps the new pad photo down over the old one (top to bottom), the way
+  // a real colour swap is shown; the app's accents follow at the same moment.
   $("swgrid").innerHTML = Object.entries(SCHEMES)
     .map(([k, s]) => `<button class="swc" role="radio" data-c="${k}" aria-checked="false"><i style="background:${s.swatch}"></i><span>${s.name}</span><span class="ms ck">check</span></button>`)
     .join("");
   const tiles = [...$("swgrid").querySelectorAll(".swc")];
   let pending;
-  const diffuse = (c, ev) => {
+  const WIPE_MS = 850;
+  const wipe = (c) => {
     if (c === current) return;
-    const r = $("pw").getBoundingClientRect();
-    next.style.setProperty("--mx", ev?.clientX ? `${((ev.clientX - r.left) / r.width) * 100}%` : "50%");
-    next.style.setProperty("--my", "55%");
-    colorPad(next, SCHEMES[c].pad);
+    clearTimeout(pending);
+    colorPad(cur, current);          // a wipe still running finishes instantly on the colour it was showing
+    colorPad(next, c);
     next.classList.remove("go");
     void next.getBoundingClientRect();
     next.classList.add("go");
     applyScheme(c);
-    clearTimeout(pending);
-    pending = setTimeout(() => { colorPad(cur, SCHEMES[c].pad); next.classList.remove("go"); }, 900);
+    pending = setTimeout(() => { colorPad(cur, c); next.classList.remove("go"); window.dispatchEvent(new Event("viewchange")); }, WIPE_MS + 50);
     $("palName").textContent = SCHEMES[c].name;
   };
   const mark = () => tiles.forEach((t) => {
@@ -112,10 +113,8 @@ export function initHome(goInside) {
     t.tabIndex = on ? 0 : -1;
   });
   for (const [i, t] of tiles.entries()) {
-    t.onmouseenter = (e) => diffuse(t.dataset.c, e);
-    t.onfocus = () => diffuse(t.dataset.c);
-    t.onclick = (e) => {
-      diffuse(t.dataset.c, e);
+    t.onclick = () => {
+      wipe(t.dataset.c);
       if (settings.pad_color !== t.dataset.c) save((s) => (s.pad_color = t.dataset.c));
       mark();
       closePops();
@@ -130,8 +129,7 @@ export function initHome(goInside) {
   mark();
 
   pops.pal = { btn: $("palBtn"), el: $("palPop"),
-    onOpen: () => { mark(); $("palName").textContent = SCHEMES[settings.pad_color]?.name ?? ""; },
-    onClose: () => diffuse(settings.pad_color) };
+    onOpen: () => { mark(); $("palName").textContent = SCHEMES[settings.pad_color]?.name ?? ""; } };
   pops.fw = { btn: $("fwBtn"), el: $("fwPop"), onOpen: () => renderFirmware(status) };
   for (const [k, p] of Object.entries(pops)) p.btn.onclick = () => (openPop === k ? closePops() : showPop(k));
   document.addEventListener("pointerdown", (e) => {

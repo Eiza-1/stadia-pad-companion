@@ -1,8 +1,8 @@
 // Button mapping: the live pad with a labelled chip per control (leader lines to the button).
 // Clicking a chip opens a menu of Xbox targets.
 
-import { renderPad, PAD_POINTS } from "../pad.js";
-import { SCHEMES, current } from "../theme.js";
+import { renderPad, padPoints, padAspect, PAD_W, PAD_TOP } from "../pad.js";
+import { current } from "../theme.js";
 import { settings, profile, save, onSettings } from "../ipc.js";
 import { h } from "../ui.js";
 
@@ -41,7 +41,7 @@ export function init(el) {
   stage = el.querySelector(".mapstage");
   svg = el.querySelector(".bigpad");
   lines = el.querySelector(".lines");
-  renderPad(svg, SCHEMES[current].pad);
+  renderPad(svg, current);
   for (const k of [...LEFT, ...RIGHT]) {
     const c = h(`<button class="chip"><small>${NAMES[k]}</small><span></span></button>`);
     c.onclick = (e) => openMenu(k, c, e);
@@ -51,6 +51,7 @@ export function init(el) {
   el.querySelector("#mapReset").onclick = () => save(() => (profile().remap = {}));
   onSettings(refresh);
   new ResizeObserver(layout).observe(stage);
+  window.addEventListener("viewchange", () => root.classList.contains("on") && layout()); // colour changed
   window.addEventListener("padstate", (e) => {
     if (!root.classList.contains("on")) return;
     const down = new Set(String(e.detail.state.buttons || "").split(" | "));
@@ -73,10 +74,12 @@ function refresh() {
 function layout() {
   const W = stage.clientWidth, H = stage.clientHeight;
   if (!W || !H) return;
-  const padW = Math.min(560, W - 2 * 190), padH = padW * (290 / 440);
+  // The pad photo and its control positions follow the chosen colour (each photo is its own shot).
+  const pts = padPoints(current);
+  const padW = Math.min(560, W - 2 * 190), padH = padW * padAspect(current);
   const left = (W - padW) / 2, top = Math.max(20, (H - padH) / 2 - 10);
   Object.assign(svg.style, { left: `${left}px`, top: `${top}px`, width: `${padW}px`, height: `${padH}px` });
-  const s = padW / 440;
+  const s = padW / PAD_W;
   let d = "", dots = "";
   const place = (keys, side) => {
     const span = Math.min(H - 40, padH + 120), y0 = top + padH / 2 - span / 2;
@@ -87,8 +90,8 @@ function layout() {
       const x = side === "l" ? Math.max(0, left - cw - 36) : Math.min(W - cw, left + padW + 36);
       c.style.left = `${x}px`;
       c.style.top = `${y}px`;
-      const [px, py] = PAD_POINTS[k];
-      const bx = left + px * s, by = top + py * s;
+      const [px, py] = pts[k];
+      const bx = left + px * s, by = top + (py + PAD_TOP) * s;
       const ex = side === "l" ? x + cw : x;
       const mx = side === "l" ? ex + 16 : ex - 16;
       d += `M${ex} ${y} L${mx} ${y} L${bx} ${by} `;
