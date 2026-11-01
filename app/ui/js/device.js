@@ -16,6 +16,19 @@ export function showPage(name) {
   document.querySelectorAll(".nav").forEach((n) => n.classList.toggle("on", n.dataset.p === name));
   document.querySelectorAll(".page").forEach((p) => p.classList.toggle("on", p.id === `p-${name}`));
   PAGES[name].shown?.();
+  // The top tab names the open page; its × closes it back to Home.
+  const nav = document.querySelector(`.nav[data-p="${name}"]`);
+  const label = nav ? nav.textContent.replace(nav.querySelector(".ms")?.textContent ?? "", "").trim() : "";
+  const tab = $("tabName");
+  if (label && tab.textContent !== label) {
+    tab.textContent = label;
+    $("tabIco").textContent = nav.querySelector(".ms").textContent;
+    $("tabClose").setAttribute("aria-label", `Close ${label}, back to Home`);
+    $("tabClose").title = `Close ${label}`;
+    $("devTab").classList.remove("swap");
+    void $("devTab").offsetWidth;
+    $("devTab").classList.add("swap");
+  }
   window.dispatchEvent(new Event("viewchange")); // the page's pad catches up with the live state
 }
 
