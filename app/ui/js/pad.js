@@ -12,8 +12,10 @@ const TOP = PAD_TOP;
 const KEYS = Object.keys(POINTS);
 const keyOf = (k) => (POINTS[k] ? k : "JustBlack");
 
-/** viewBox height for a colour (photo + trigger room). */
-const viewH = (key) => PAD_H[key] + TOP;
+/** viewBox height for a colour (photo + trigger room, if the pad shows trigger bars). */
+const viewH = (key, top = TOP) => PAD_H[key] + top;
+/** The home pad is a still picture: no trigger bars, so no room above the photo either. */
+const barsOf = (svgEl) => !svgEl.classList.contains("home-pad");
 
 /** Control centres in viewBox units (x, y from the photo's top-left; y < 0 is above the photo). */
 export function padPoints(key) {
@@ -56,7 +58,7 @@ function clipShape({ c, r, e }) {
   return `<ellipse cx="${e[0]}" cy="${e[1]}" rx="${e[2]}" ry="${e[3]}"/>`;
 }
 
-function markup(key) {
+function markup(key, bars = true) {
   const p = POINTS[key];
   const id = `pd${++seq}`;
   const img = `assets/pads/${key}.png`;
@@ -103,7 +105,7 @@ function markup(key) {
       <radialGradient id="${id}sock"><stop offset="0" stop-color="#050506"/><stop offset=".75" stop-color="#121215"/><stop offset="1" stop-color="#26262b"/></radialGradient>
       <radialGradient id="${id}sheen" cx=".5" cy=".5" r=".5"><stop offset=".55" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient>
     </defs>
-    ${bar("l2", "L2_CLICK")}${bar("r2", "R2_CLICK")}
+    ${bars ? bar("l2", "L2_CLICK") + bar("r2", "R2_CLICK") : ""}
     <image class="base" href="${img}" x="0" y="0" width="${PAD_W}" height="${PAD_H[key]}" preserveAspectRatio="none"/>
     ${pressable}
     ${stick("l", "L3")}${stick("r", "R3")}`;
@@ -121,8 +123,9 @@ export function colorPad(svgEl, key, force = false) {
   const k = keyOf(key);
   if (!force && svgEl.dataset.pad === k) return;
   svgEl.dataset.pad = k;
-  svgEl.setAttribute("viewBox", `0 ${-TOP} ${PAD_W} ${viewH(k)}`);
-  svgEl.innerHTML = markup(k);
+  const bars = barsOf(svgEl), top = bars ? TOP : 0;
+  svgEl.setAttribute("viewBox", `0 ${-top} ${PAD_W} ${viewH(k, top)}`);
+  svgEl.innerHTML = markup(k, bars);
 }
 
 /** Warms the image cache so a colour switch shows the new photo at once. */

@@ -34,11 +34,12 @@ async function boot() {
   $("winClose").onclick = () => invoke("window_close");
   document.addEventListener("keydown", (e) => e.key === "Escape" && document.body.classList.contains("inside") && goInside(false));
 
-  // Live pad: only the drawing on screen follows the controller, at most once per frame, and nothing
-  // is drawn while the window is minimised. Hidden pages catch up when they are shown.
+  // Live pad: only the drawing on the open configuration page follows the controller, at most once per
+  // frame, and nothing is drawn while the window is minimised. Hidden pages catch up when they are
+  // shown. The home pad is a still picture you click to open configuration: it never shows input.
   let frame = null, latest = null, lastEvent = null;
   const visiblePads = () =>
-    document.querySelectorAll(document.body.classList.contains("inside") ? ".page.on svg.pad" : "#pw .cur");
+    document.body.classList.contains("inside") ? document.querySelectorAll(".page.on svg.pad") : [];
   const draw = () => {
     frame = null;
     if (!latest) return;
