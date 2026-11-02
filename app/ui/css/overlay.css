@@ -1,0 +1,100 @@
+/* Gemini overlay (overlay.html), modelled on the reference photo: two floating dark glassy shapes. The
+   window is 760 px wide and transparent; its height follows the content (overlay.rs keeps the bottom). */
+
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/GoogleSansFlex.ttf") format("truetype");
+  font-weight: 100 1000;
+  font-display: block;
+}
+@font-face {
+  font-family: "Noto Color Emoji";
+  src: url("../assets/fonts/NotoColorEmoji-subset.ttf") format("truetype");
+  font-display: block;
+}
+
+:root {
+  color-scheme: normal;
+  --font: "Google Sans Flex", "Google Sans", "Noto Color Emoji", "Segoe UI Emoji", system-ui, sans-serif;
+  --text: #e3e3e8;
+  --dim: #a8adb5;
+  --blue: #2b4c7e;
+  --blue-hi: #a8c7fa;
+  --on-blue: #d3e3fd;
+  --err: #f2b8b5;
+  --pill-h: 132px;
+  --chip-h: 78px;
+}
+
+html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+body { font: 400 16px/1.4 var(--font); color: var(--text); -webkit-font-smoothing: antialiased; }
+#ov { display: flex; flex-direction: column; gap: 14px; width: 720px; margin: 0 auto; padding: 16px 0 6px; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
+svg { display: block; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+
+/* The glassy dark gradient of the reference: near-black navy, faint lighter rim at the bottom. */
+.glass {
+  background: linear-gradient(180deg, #161b22 0%, #0d1117 55%, #121822 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .06), inset 0 -10px 24px rgba(120, 150, 190, .10), 0 0 0 1px rgba(255, 255, 255, .04), 0 12px 32px rgba(0, 0, 0, .45);
+}
+
+/* ---- pill ---- */
+#pillwrap { display: flex; flex-direction: column; gap: 18px; }
+#pillwrap[hidden] { display: none; }
+.share { align-self: flex-start; display: flex; align-items: center; gap: 18px; height: var(--chip-h); padding: 0 32px; border-radius: 99px; font-size: 23px; letter-spacing: .2px; }
+.share svg { width: 26px; height: 26px; stroke-width: 2.4; }
+.pill { position: relative; display: flex; align-items: center; height: var(--pill-h); padding: 0 44px 0 50px; border-radius: 99px; }
+.handle { position: absolute; top: 0; left: 50%; translate: -50% 0; width: 120px; height: 26px; cursor: grab; }
+.handle::before { content: ""; position: absolute; top: 11px; left: 50%; translate: -50% 0; width: 54px; height: 5px; border-radius: 5px; background: #4a4f57; }
+.icon { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; flex: none; }
+.icon:hover, .share:hover { background-color: rgba(255, 255, 255, .05); }
+#plus svg { width: 28px; height: 28px; stroke-width: 3; }
+#live svg { width: 32px; height: 32px; stroke-width: 3; }
+.field { flex: 1; min-width: 0; margin: 0 24px 0 34px; height: 60px; border: 0; outline: none; background: none; color: var(--text); font: 400 32px var(--font); letter-spacing: .3px; caret-color: var(--blue-hi); }
+.field::placeholder { color: var(--text); opacity: 1; }
+/* Long questions shrink to stay readable in the pill. */
+.field.long { font-size: 25px; }
+.field.longer { font-size: 20px; }
+.mic { display: grid; place-items: center; width: 72px; height: 72px; margin-right: 30px; border-radius: 50%; flex: none; background: var(--blue); color: var(--on-blue); transition: background .2s, color .2s, box-shadow .2s; }
+.mic svg { width: 32px; height: 32px; stroke-width: 3.2; }
+body.talk .mic { background: var(--blue-hi); color: #0b1d3a; box-shadow: 0 0 0 6px rgba(168, 199, 250, .18); }
+body.talk .field::placeholder { color: var(--dim); }
+.hint { min-height: 0; margin: -8px 0 0; padding: 0 32px; font-size: 15px; color: var(--dim); }
+.hint:empty { display: none; }
+.hint.err { color: var(--err); }
+
+/* ---- answer cards ---- */
+#cards { display: flex; flex-direction: column; gap: 8px; }
+#cards:empty { display: none; }
+.card { position: relative; overflow: hidden; padding: 16px 52px 18px 24px; border-radius: 28px; font-size: 18px; line-height: 1.5; transition: opacity .25s, transform .25s; }
+.card.old { opacity: .55; transform: scale(.96); }
+.card .q { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 14px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card .q i { width: 14px; height: 14px; flex: none; background: conic-gradient(from 200deg, #4285f4, #9b72cb, #d96570, #4285f4); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+.card .a { white-space: pre-wrap; }
+.card .a:empty::after { content: "…"; color: var(--dim); }
+.card.error .a { color: var(--err); }
+.card .x { position: absolute; top: 12px; right: 12px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; color: var(--dim); font-size: 18px; }
+.card .x:hover { background: rgba(255, 255, 255, .08); color: var(--text); }
+.card .bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--blue-hi); opacity: .6; transform-origin: left; transform: scaleX(0); }
+.card .speaking { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
+
+/* ---- key setup ---- */
+.setup { padding: 22px 26px; border-radius: 28px; }
+.setup[hidden] { display: none; }
+.setup h2 { margin: 0 0 6px; font-size: 22px; font-weight: 500; }
+.setup p { margin: 0 0 8px; font-size: 16px; color: var(--text); }
+.setup .fine { font-size: 14px; color: var(--dim); }
+.keyrow, .keyacts { display: flex; gap: 10px; margin-top: 12px; }
+.keyacts { justify-content: flex-end; }
+#keyIn { flex: 1; height: 48px; padding: 0 18px; border-radius: 99px; border: 1px solid rgba(255, 255, 255, .12); background: rgba(0, 0, 0, .35); color: var(--text); font: 400 16px var(--font); outline: none; user-select: text; }
+#keyIn:focus { border-color: var(--blue-hi); }
+.ghost, .primary { height: 48px; padding: 0 22px; border-radius: 99px; font-size: 16px; font-weight: 500; }
+.ghost { background: rgba(255, 255, 255, .07); }
+.ghost:hover { background: rgba(255, 255, 255, .12); }
+.primary { background: var(--blue-hi); color: #0b1d3a; }
+.msg { min-height: 20px; margin: 10px 0 0 !important; font-size: 14px !important; color: var(--dim) !important; }
+.msg.err { color: var(--err) !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition-duration: .01ms !important; animation: none !important; }
+}

@@ -1,0 +1,4 @@
+{
+  "//": "Tells node (tests, scripts/check-ui.sh) these UI scripts are ES modules; the app ignores this file.",
+  "type": "module"
+}

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Gemini</title>
+  <link rel="stylesheet" href="css/overlay.css">
+  <script type="module" src="js/overlay/main.js"></script>
+</head>
+<body>
+  <!-- The Gemini overlay (overlay.rs). The window is transparent; only these shapes are visible. -->
+  <main id="ov">
+    <section id="cards" aria-live="polite"></section>
+
+    <section id="keycard" class="glass card setup" hidden>
+      <h2>Add your Gemini key</h2>
+      <p>Gemini answers come from your own free key from Google AI Studio. It's saved only on this PC.</p>
+      <p class="fine">The free tier has limits, and on the free tier Google may use what you send to improve its products, so don't share a screen with private things on it.</p>
+      <div class="keyrow">
+        <input id="keyIn" type="password" placeholder="Paste your key (AIza…)" autocomplete="off" spellcheck="false">
+        <button id="keyPaste" class="ghost" type="button">Paste</button>
+      </div>
+      <div class="keyacts">
+        <button id="keyStudio" class="ghost" type="button">Open AI Studio</button>
+        <button id="keySave" class="primary" type="button">Save</button>
+      </div>
+      <p id="keyMsg" class="msg" role="status"></p>
+    </section>
+
+    <section id="pillwrap" hidden>
+      <button id="share" class="glass share" type="button">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="20" rx="5"/><path d="M16 21v-9M12 15.5l4-4 4 4"/></svg>
+        <span>Share screen with Live</span>
+      </button>
+      <div id="pill" class="glass pill">
+        <div class="handle" id="handle" title="Drag to move"></div>
+        <button id="plus" class="icon" type="button" aria-label="More">
+          <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M17 3v28M3 17h28"/></svg>
+        </button>
+        <input id="field" class="field" placeholder="Ask Gemini" autocomplete="off" spellcheck="false" aria-label="Ask Gemini">
+        <button id="mic" class="mic" type="button" aria-label="Talk">
+          <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="14" y="5" width="12" height="20" rx="6"/><path d="M8 19a12 12 0 0 0 24 0M20 31v5"/></svg>
+        </button>
+        <button id="live" class="icon" type="button" aria-label="Talk live">
+          <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 16v8M13 11v18M20 5v30M27 11v18M34 16v8"/></svg>
+        </button>
+      </div>
+      <p id="hint" class="hint" role="status"></p>
+      <div id="kb"></div>
+    </section>
+  </main>
+</body>
+</html>

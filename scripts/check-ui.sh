@@ -4,7 +4,7 @@ set -e
 ui="$(dirname "$0")/../app/ui/js"
 tmp="$(mktemp -d)"
 n=0
-for f in "$ui"/*.js "$ui"/pages/*.js; do
+for f in "$ui"/*.js "$ui"/pages/*.js "$ui"/overlay/*.js; do
   cp "$f" "$tmp/$(basename "$f" .js)-$n.mjs"
   node --check "$tmp/$(basename "$f" .js)-$n.mjs"
   n=$((n + 1))
