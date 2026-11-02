@@ -1,0 +1,49 @@
+/* Tray right-click menu (tray.html). The window is 316 x 280 and transparent; the panel leaves a
+   margin for its own shadow. Colours follow the pad colour through the same tokens as the app. */
+:root { color-scheme: normal; }
+html, body { margin: 0; background: transparent; overflow: hidden; user-select: none; }
+body { font: 400 13.5px/1.2 var(--font); color: var(--on-surface); padding: 8px 8px 12px; box-sizing: border-box; }
+
+.menu {
+  display: flex; flex-direction: column; gap: 2px; box-sizing: border-box;
+  padding: 10px; border-radius: 18px;
+  background: color-mix(in srgb, var(--sc-low) 96%, transparent);
+  border: 1px solid color-mix(in srgb, var(--on-surface) 9%, transparent);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .45);
+  opacity: 0; translate: 0 6px; transition: opacity .14s var(--emph), translate .18s var(--emph);
+}
+body.in .menu { opacity: 1; translate: 0 0; }
+
+.dev {
+  display: flex; align-items: center; gap: 12px; margin-bottom: 6px; padding: 10px 12px;
+  border-radius: 14px; background: var(--sc-high);
+}
+.dev .pad { width: 64px; height: 43px; object-fit: contain; filter: drop-shadow(0 3px 5px rgba(0, 0, 0, .5)); }
+.who { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.who b { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.who small { font-size: 12px; color: var(--on-sv); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.ring { position: relative; width: 44px; height: 44px; flex: none; }
+.ring svg { width: 100%; height: 100%; rotate: -90deg; }
+.ring circle { fill: none; stroke-width: 3.5; }
+.ring .track { stroke: color-mix(in srgb, var(--on-surface) 12%, transparent); }
+.ring .val { stroke: var(--primary); stroke-linecap: round; stroke-dasharray: 119.4; stroke-dashoffset: 119.4; transition: stroke-dashoffset .4s var(--emph); }
+.ring.low .val { stroke: var(--error); }
+.ring.off .val { opacity: 0; }
+.ring span { position: absolute; inset: 0; display: grid; place-items: center; font: 600 11px var(--font); color: var(--on-surface); }
+.ring.low span { color: var(--error); }
+.ring .ms { font-family: "Material Symbols Rounded"; font-size: 18px; font-weight: 400; color: var(--primary); }
+
+button {
+  display: flex; align-items: center; justify-content: space-between; width: 100%; height: 40px;
+  padding: 0 12px; border: 0; border-radius: 10px; background: none; color: inherit;
+  font: inherit; text-align: left; cursor: default; outline: none;
+}
+button:hover, button:focus-visible { background: color-mix(in srgb, var(--on-surface) 8%, transparent); }
+button:active { background: color-mix(in srgb, var(--on-surface) 12%, transparent); }
+button:focus-visible { box-shadow: inset 0 0 0 2px var(--primary); }
+
+.sw { position: relative; width: 32px; height: 18px; border-radius: 99px; background: var(--sc-highest); border: 1px solid var(--outline); transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--on-sv); transition: translate .18s var(--spring), background .15s; }
+[aria-checked="true"] .sw { background: var(--primary); border-color: var(--primary); }
+[aria-checked="true"] .sw::after { translate: 14px 0; background: var(--on-primary); }

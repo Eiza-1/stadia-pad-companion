@@ -26,15 +26,27 @@ impl AppState {
 
 /// Shows the window, creating it if needed. Safe to call from any thread.
 pub fn open_window(app: &AppHandle) {
+    open_window_at(app, None);
+}
+
+/// Shows the window on a configuration page (e.g. "other" for Settings), or as it was when `None`.
+pub fn open_window_at(app: &AppHandle, page: Option<&'static str>) {
     let handle = app.clone();
     let _ = app.run_on_main_thread(move || {
         if let Some(w) = handle.get_webview_window("main") {
             let _ = w.unminimize();
             let _ = w.show();
             let _ = w.set_focus();
+            if let Some(p) = page {
+                let _ = w.emit("goto", p);
+            }
             return;
         }
-        let built = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App("index.html".into()))
+        let url = match page {
+            Some(p) => format!("index.html#{p}"),
+            None => "index.html".into(),
+        };
+        let built = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::App(url.into()))
             .title("Pad Companion")
             .decorations(false)
             .inner_size(1280.0, 800.0)
@@ -125,21 +137,23 @@ fn main() {
             ipc::window_minimize,
             ipc::window_maximize,
             ipc::window_close,
+            tray::tray_action,
+            tray::tray_ready,
+            tray::tray_set_autostart,
         ])
         .setup(move |app| {
             let settings_path = Settings::default_path();
             let settings = Settings::load(&settings_path);
-            let start_with_windows = settings.start_with_windows;
             // Re-apply every start: an upgrade runs the old uninstaller (which removes the Run value),
             // and a moved install changes the exe path.
-            pad_core::win::autostart::set(start_with_windows);
+            pad_core::win::autostart::set(settings.start_with_windows);
             let bridge = Bridge::start(settings);
             bridge.set_live(false);
             let (tx, rx) = mpsc::channel();
             bridge.subscribe(tx);
             app.manage(AppState { bridge: Mutex::new(Some(bridge)), settings_path });
             spawn_dispatcher(app.handle().clone(), rx);
-            tray::build(app.handle(), start_with_windows)?;
+            tray::build(app.handle())?;
             if !background {
                 open_window(app.handle());
             }

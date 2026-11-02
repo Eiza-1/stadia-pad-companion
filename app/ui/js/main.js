@@ -33,6 +33,11 @@ async function boot() {
   $("winMax").onclick = () => invoke("window_maximize");
   $("winClose").onclick = () => invoke("window_close");
   document.addEventListener("keydown", (e) => e.key === "Escape" && document.body.classList.contains("inside") && goInside(false));
+  // "Open settings" from the tray menu: on a new window via #page, on an open one via an event.
+  const goto = (p) => { goInside(true); showPage(p); };
+  listen("goto", goto);
+  const start = location.hash.slice(1);
+  if (start === "other") goto(start);
 
   // Live pad: only the drawing on the open configuration page follows the controller, at most once per
   // frame, and nothing is drawn while the window is minimised. Hidden pages catch up when they are

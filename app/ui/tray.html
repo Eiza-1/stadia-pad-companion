@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pad Companion menu</title>
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/tray.css">
+  <script type="module" src="js/tray.js"></script>
+</head>
+<body>
+  <!-- Right-click menu of the tray icon (tray.rs). The window is transparent; .menu is the panel. -->
+  <main class="menu" role="menu" aria-label="Pad Companion">
+    <section class="dev">
+      <img class="pad" id="pad" src="assets/pads/JustBlack.png" alt="">
+      <div class="who">
+        <b id="name">Stadia Controller</b>
+        <small id="conn">Not connected</small>
+      </div>
+      <div class="ring" id="ring" aria-hidden="true">
+        <svg viewBox="0 0 44 44"><circle class="track" cx="22" cy="22" r="19"/><circle class="val" id="arc" cx="22" cy="22" r="19"/></svg>
+        <span id="pct">–</span>
+      </div>
+    </section>
+    <button role="menuitem" data-a="open">Open Pad Companion</button>
+    <button role="menuitem" data-a="settings">Open settings</button>
+    <button role="menuitemcheckbox" id="auto" aria-checked="false">Start with Windows<i class="sw" aria-hidden="true"></i></button>
+    <button role="menuitem" data-a="quit">Quit Pad Companion</button>
+  </main>
+</body>
+</html>

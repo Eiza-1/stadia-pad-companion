@@ -17,6 +17,11 @@ export async function init() {
     status = s;
     subs.status.forEach((f) => f(s));
   });
+  // Changed from the tray menu: take it into the shared copy so a later save keeps it.
+  listen("autostart", (on) => {
+    settings.start_with_windows = on;
+    subs.settings.forEach((f) => f(settings));
+  });
   return { settings, status };
 }
 

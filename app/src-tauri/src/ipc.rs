@@ -1,11 +1,11 @@
 //! Tauri commands the UI calls, and the mapping from bridge errors to UI status.
 
-use crate::{tray, AppState};
+use crate::AppState;
 use pad_core::bridge::{BridgeError, Status};
 use pad_core::settings::Settings;
 use pad_core::win::{actions, autostart};
 use serde::Serialize;
-use tauri::{AppHandle, State, WebviewWindow};
+use tauri::{State, WebviewWindow};
 
 /// What the UI shows when the bridge could not start for a known reason.
 pub fn status_for_error(e: &BridgeError) -> Status {
@@ -24,11 +24,10 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_settings(app: AppHandle, state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
     let before = get_settings(state.clone());
     if before.start_with_windows != settings.start_with_windows {
         autostart::set(settings.start_with_windows);
-        tray::set_autostart_checked(&app, settings.start_with_windows);
     }
     settings.save(&state.settings_path).map_err(|e| e.to_string())?;
     state.with_bridge(|b| b.update_settings(settings));
