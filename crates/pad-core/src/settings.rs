@@ -31,9 +31,25 @@ pub enum Curve {
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum AssistantAction {
+    /// The Gemini overlay over any app: tap to type, hold to talk.
     #[default]
+    Overlay,
+    /// Open the Gemini app (or gemini.google.com).
     Gemini,
     Off,
+}
+
+/// How the overlay gives Gemini's answers.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum AnswerVoice {
+    #[default]
+    Text,
+    Voice,
+    Both,
+}
+
+fn not_migrated() -> bool {
+    false
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
@@ -156,6 +172,15 @@ pub struct Settings {
     pub capture: CaptureAction,
     pub capture_tool: CaptureTool,
     pub stadia: StadiaAction,
+    pub answer_voice: AnswerVoice,
+    /// Old files lack this, so it reads `false` and `normalize` moves an old `Gemini` choice to the
+    /// overlay once (fresh defaults are already `Overlay`).
+    #[serde(default = "not_migrated")]
+    pub overlay_migrated: bool,
+    /// The one-time "Assistant now opens the Gemini overlay" note was dismissed.
+    pub overlay_intro_seen: bool,
+    /// Where the pill was dragged to (physical px); `None` = lower centre of the screen.
+    pub overlay_pos: Option<(i32, i32)>,
 }
 
 impl Default for Settings {
@@ -167,10 +192,14 @@ impl Default for Settings {
             pad_color: PadColor::JustBlack,
             hide_from_games: true,
             start_with_windows: false,
-            assistant: AssistantAction::Gemini,
+            assistant: AssistantAction::Overlay,
             capture: CaptureAction::TapHold,
             capture_tool: CaptureTool::Auto,
             stadia: StadiaAction::GuideHold,
+            answer_voice: AnswerVoice::Text,
+            overlay_migrated: true,
+            overlay_intro_seen: false,
+            overlay_pos: None,
         }
     }
 }
@@ -196,6 +225,12 @@ impl Settings {
     }
 
     fn normalize(&mut self) {
+        if !self.overlay_migrated {
+            if self.assistant == AssistantAction::Gemini {
+                self.assistant = AssistantAction::Overlay;
+            }
+            self.overlay_migrated = true;
+        }
         if !self.profiles.iter().any(|p| p.name == DEFAULT_PROFILE) {
             self.profiles.insert(0, Profile::default());
         }
@@ -248,6 +283,27 @@ mod tests {
         let p = tempdir().join("settings.json");
         std::fs::write(&p, contents).unwrap();
         p
+    }
+
+    #[test]
+    fn old_gemini_setting_moves_to_overlay_once() {
+        let p = write_tmp(r#"{"assistant":"Gemini"}"#);
+        let s = Settings::load(&p);
+        assert_eq!(s.assistant, AssistantAction::Overlay);
+        assert!(s.overlay_migrated);
+        let mut back = s.clone();
+        back.assistant = AssistantAction::Gemini;
+        back.save(&p).unwrap();
+        assert_eq!(Settings::load(&p).assistant, AssistantAction::Gemini, "a later choice of Gemini app is kept");
+    }
+
+    #[test]
+    fn new_settings_default_to_overlay_and_text_answers() {
+        let s = Settings::default();
+        assert_eq!(s.assistant, AssistantAction::Overlay);
+        assert_eq!(s.answer_voice, AnswerVoice::Text);
+        assert_eq!(s.overlay_pos, None);
+        assert!(!s.overlay_intro_seen);
     }
 
     #[test]
