@@ -181,6 +181,8 @@ pub struct Settings {
     pub overlay_intro_seen: bool,
     /// Where the pill was dragged to (physical px); `None` = lower centre of the screen.
     pub overlay_pos: Option<(i32, i32)>,
+    /// Keyboard shortcut for the overlay (tap = type, hold = talk); `None` = off.
+    pub overlay_hotkey: Option<crate::hotkey::Hotkey>,
 }
 
 impl Default for Settings {
@@ -200,6 +202,7 @@ impl Default for Settings {
             overlay_migrated: true,
             overlay_intro_seen: false,
             overlay_pos: None,
+            overlay_hotkey: Some(crate::hotkey::Hotkey::default()),
         }
     }
 }

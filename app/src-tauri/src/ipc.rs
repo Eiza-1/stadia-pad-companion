@@ -28,6 +28,7 @@ pub fn set_settings(state: State<'_, AppState>, mut settings: Settings) -> Resul
     let before = get_settings(state.clone());
     // Owned by the overlay (drag) and its own commands, not by a window's copy of the settings.
     settings.overlay_pos = before.overlay_pos;
+    settings.overlay_hotkey = before.overlay_hotkey; // changed only through set_overlay_hotkey
     if before.start_with_windows != settings.start_with_windows {
         autostart::set(settings.start_with_windows);
     }
@@ -43,6 +44,23 @@ pub fn update_settings(state: &AppState, f: impl FnOnce(&mut Settings)) -> Resul
     s.save(&state.settings_path).map_err(|e| e.to_string())?;
     state.with_bridge(|b| b.update_settings(s));
     Ok(())
+}
+
+/// Settings › Gemini › Shortcut: registers it with Windows first, saves only if that worked.
+#[tauri::command]
+pub fn set_overlay_hotkey(
+    state: State<'_, AppState>,
+    keys: State<'_, pad_core::win::hotkey_win::HotkeyThread>,
+    hotkey: Option<pad_core::hotkey::Hotkey>,
+) -> Result<(), String> {
+    keys.set(hotkey)?;
+    update_settings(&state, |s| s.overlay_hotkey = hotkey)
+}
+
+/// "Ctrl + Alt + G" for the Settings row.
+#[tauri::command]
+pub fn hotkey_label(hotkey: pad_core::hotkey::Hotkey) -> String {
+    pad_core::hotkey::label(&hotkey)
 }
 
 /// Settings › Reset overlay position.

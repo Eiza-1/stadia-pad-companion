@@ -1,6 +1,7 @@
 //! Windows-only glue: HID access, HidHide, ViGEm, logging.
 
 pub mod hid;
+pub mod hotkey_win;
 pub mod keystore;
 pub mod hidhide;
 pub mod log;

@@ -149,6 +149,8 @@ fn main() {
             ipc::window_close,
             ipc::set_live,
             ipc::overlay_reset_pos,
+            ipc::set_overlay_hotkey,
+            ipc::hotkey_label,
             ipc::gemini_key_status,
             ipc::gemini_key_set,
             ipc::gemini_key_clear,
@@ -176,6 +178,14 @@ fn main() {
             bridge.subscribe(tx);
             app.manage(AppState { bridge: Mutex::new(Some(bridge)), settings_path });
             app.manage(overlay::Overlay::default());
+            // Overlay keyboard shortcut (tap = type, hold = talk), registered with Windows.
+            let h = app.handle().clone();
+            let keys = pad_core::win::hotkey_win::HotkeyThread::start(move |a| overlay::on_action(&h, a));
+            let wanted = app.state::<AppState>().with_bridge(|b| b.settings().overlay_hotkey).flatten();
+            if let Err(e) = keys.set(wanted) {
+                pad_core::log!("overlay shortcut not registered: {e}");
+            }
+            app.manage(keys);
             spawn_dispatcher(app.handle().clone(), rx);
             tray::build(app.handle())?;
             if !background {

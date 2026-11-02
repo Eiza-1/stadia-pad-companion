@@ -83,9 +83,55 @@ function geminiPanel() {
   const posRow = h(`<div class="srow"><span class="stext"><b>Overlay position</b><small>Drag the pill by its handle to move it. This puts it back at the bottom centre.</small></span><button class="btn text">Reset</button></div>`);
   posRow.querySelector("button").onclick = () => invoke("overlay_reset_pos").then(() => say("The overlay opens at the bottom centre again."));
 
-  g.append(keyRow, form, msg, voiceRow, posRow);
+  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, posRow);
   render();
   return g;
+}
+
+/** Keyboard shortcut for the overlay: "Change" listens for the next key combination (Esc cancels). */
+function shortcutRow(say) {
+  const row = h(`<div class="srow"><span class="stext"><b>Keyboard shortcut</b><small></small></span><span class="keybtns"></span></div>`);
+  const show = async () => {
+    const k = settings.overlay_hotkey;
+    row.querySelector("small").textContent = k
+      ? `${await invoke("hotkey_label", { hotkey: k })}: tap to type, hold to talk. Works without the pad.`
+      : "Off. Set one to open the overlay from the keyboard.";
+    const btns = row.querySelector(".keybtns");
+    btns.innerHTML = "";
+    const change = h(`<button class="btn tonal">${k ? "Change" : "Set"}</button>`);
+    change.onclick = listenForKeys;
+    btns.append(change);
+    if (k) {
+      const off = h(`<button class="btn text">Off</button>`);
+      off.onclick = () => apply(null);
+      btns.append(off);
+    }
+  };
+  const apply = async (hotkey) => {
+    try {
+      await invoke("set_overlay_hotkey", { hotkey });
+      settings.overlay_hotkey = hotkey;
+      say(hotkey ? `Shortcut set: ${await invoke("hotkey_label", { hotkey })}` : "Keyboard shortcut off.");
+    } catch (e) {
+      say(String(e), true);
+    }
+    show();
+  };
+  const MODS = ["Control", "Alt", "Shift", "Meta", "OS"];
+  function listenForKeys() {
+    row.querySelector("small").textContent = "Press the keys you want (Esc to cancel)…";
+    const onKey = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (MODS.includes(e.key)) return;
+      document.removeEventListener("keydown", onKey, true);
+      if (e.key === "Escape") return show();
+      apply({ ctrl: e.ctrlKey, alt: e.altKey, shift: e.shiftKey, win: e.metaKey, vk: e.keyCode });
+    };
+    document.addEventListener("keydown", onKey, true);
+  }
+  show();
+  return row;
 }
 
 function renderAbout() {
