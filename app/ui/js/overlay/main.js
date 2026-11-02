@@ -15,6 +15,7 @@ let voice = "Text";
 let mode = "hidden";
 let keyOk = false;
 let typingBefore = "";
+let prevPad = ""; // last pad buttons seen, for press edges
 const keyboard = { onPad: null, onShow: null, onHide: null }; // filled by the Orbit rail (orbit-view.js)
 export { keyboard };
 
@@ -25,6 +26,7 @@ new ResizeObserver(() => ready && invoke("overlay_resize", { height: height() })
 
 // ---------- the pill ----------
 function setMode(m) {
+  if (m !== mode) prevPad = ""; // a fresh start for pad edges
   mode = m;
   document.body.classList.toggle("talk", m === "talk");
   const showPill = m !== "hidden";
@@ -79,6 +81,7 @@ export function fit() {
 $("field").addEventListener("input", fit);
 
 $("field").addEventListener("mousedown", () => invoke("overlay_focus"));
+listen("ov_focus", () => $("field").focus());
 $("field").addEventListener("keydown", (e) => {
   if (e.key === "Enter") send();
   if (e.key === "Escape") back();
@@ -89,12 +92,20 @@ document.addEventListener("keydown", (e) => {
 $("mic").onclick = () => hint("Hold the Assistant button (or your shortcut) and speak");
 for (const id of ["plus", "live", "share"]) $(id).onclick = () => hint("Coming soon: Circle to Search and Gemini Live");
 
-// Dragging by the handle; the new spot is remembered once the window stops moving.
-$("handle").addEventListener("mousedown", () => tauri.window.getCurrentWindow().startDragging());
-let dragTimer;
+// Dragging by the handle; the new spot is remembered once the window stops moving. Only a real drag
+// counts: the window also moves whenever its height changes (overlay.rs keeps the bottom edge put).
+let dragging = false, dragTimer;
+$("handle").addEventListener("mousedown", () => {
+  dragging = true;
+  tauri.window.getCurrentWindow().startDragging();
+});
 tauri.window.getCurrentWindow().onMoved(() => {
+  if (!dragging) return;
   clearTimeout(dragTimer);
-  dragTimer = setTimeout(() => invoke("overlay_drag_end"), 400);
+  dragTimer = setTimeout(() => {
+    dragging = false;
+    invoke("overlay_drag_end");
+  }, 400);
 });
 
 // ---------- speech ----------
@@ -126,7 +137,7 @@ listen("answer", (a) => {
   } else if (a.error === "nokey") {
     stack.close(a.id);
     keyOk = false;
-    setMode("type");
+    invoke("overlay_show_type"); // overlay.rs takes the pad and shows the pill (with the key card)
   } else if (a.error) stack.error(a.id, a.error);
   drawCards();
 });
@@ -192,7 +203,8 @@ $("keySave").onclick = async () => {
     keyOk = true;
     $("keyIn").value = "";
     msg.textContent = "";
-    setMode(mode === "hidden" ? "type" : mode);
+    if (mode === "hidden") await invoke("overlay_show_type");
+    else setMode(mode);
     hint("Key saved. Ask away");
   } catch (e) {
     msg.classList.add("err");
@@ -201,7 +213,6 @@ $("keySave").onclick = async () => {
 };
 
 // ---------- pad while the overlay holds it (the Orbit rail adds typing) ----------
-let prevPad = "";
 listen("pad", (s) => {
   const now = new Set(s.buttons ? String(s.buttons).split(" | ") : []);
   const before = new Set(prevPad ? prevPad.split(" | ") : []);

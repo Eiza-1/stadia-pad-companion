@@ -90,6 +90,9 @@ fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
                 match ev {
                     BridgeEvent::Status(s) => {
                         tray::set_status(&app, &s);
+                        if s.connection.is_none() {
+                            overlay::on_pad_gone(&app);
+                        }
                         if let Some(w) = window {
                             let _ = w.emit("status", s);
                         }
@@ -161,6 +164,7 @@ fn main() {
             overlay::overlay_capture,
             overlay::overlay_close,
             overlay::overlay_focus,
+            overlay::overlay_show_type,
             overlay::overlay_drag_end,
             tray::tray_action,
             tray::tray_ready,
@@ -180,7 +184,7 @@ fn main() {
             app.manage(overlay::Overlay::default());
             // Overlay keyboard shortcut (tap = type, hold = talk), registered with Windows.
             let h = app.handle().clone();
-            let keys = pad_core::win::hotkey_win::HotkeyThread::start(move |a| overlay::on_action(&h, a));
+            let keys = pad_core::win::hotkey_win::HotkeyThread::start(move |a| overlay::on_key_action(&h, a));
             let wanted = app.state::<AppState>().with_bridge(|b| b.settings().overlay_hotkey).flatten();
             if let Err(e) = keys.set(wanted) {
                 pad_core::log!("overlay shortcut not registered: {e}");

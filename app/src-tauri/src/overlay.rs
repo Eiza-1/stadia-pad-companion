@@ -25,6 +25,10 @@ pub enum Cmd {
     SendTranscript,
     /// Hand the pad to the overlay (`true`) or back to games.
     Capture(bool),
+    /// Show why speech-to-text can't work (and how to fix it) in the pill.
+    SpeechError(&'static str),
+    /// Give the text field real keyboard focus (the keyboard shortcut was used).
+    FocusField,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -45,6 +49,10 @@ pub struct OverlayState {
     want: Option<Mode>,
     talking: bool,
     send_pending: bool,
+    /// A speech error that came before the page could show it.
+    speech_error: Option<&'static str>,
+    /// The keyboard shortcut opened the window: focus the field once it's ready.
+    focus_pending: bool,
 }
 
 impl OverlayState {
@@ -100,10 +108,81 @@ impl OverlayState {
         self.win = Win::Ready;
         self.shown = self.want;
         let mut out: Vec<Cmd> = self.want.map(Cmd::Show).into_iter().collect();
+        if let Some(e) = self.speech_error.take() {
+            out.push(Cmd::SpeechError(e));
+        }
+        if std::mem::take(&mut self.focus_pending) && self.want == Some(Mode::Type) {
+            out.push(Cmd::FocusField);
+        }
         if std::mem::take(&mut self.send_pending) {
             out.push(Cmd::SendTranscript);
         }
         out
+    }
+
+    /// The same actions from the keyboard shortcut: a tap also gives the field keyboard focus, since
+    /// a keyboard player types on the real keyboard.
+    pub fn on_key_action(&mut self, a: Action) -> Vec<Cmd> {
+        let mut out = self.on_action(a);
+        if a == Action::OverlayTap {
+            if out.contains(&Cmd::Show(Mode::Type)) {
+                out.push(Cmd::FocusField);
+            } else if out.contains(&Cmd::Open) {
+                self.focus_pending = true;
+            }
+        }
+        out
+    }
+
+    /// Speech-to-text failed: shown now if the page is there, else once it is.
+    pub fn on_speech_error(&mut self, e: &'static str) -> Vec<Cmd> {
+        if self.win == Win::Ready {
+            vec![Cmd::SpeechError(e)]
+        } else {
+            self.speech_error = Some(e);
+            vec![]
+        }
+    }
+
+    /// Nothing was heard: keep the pill open (and the pad) so the player can type instead.
+    pub fn on_empty_transcript(&mut self) -> Vec<Cmd> {
+        if self.win != Win::Ready {
+            return vec![];
+        }
+        self.shown = Some(Mode::Type);
+        vec![Cmd::Show(Mode::Type)]
+    }
+
+    /// The pad disconnected: end a talk in progress, or tuck the pill away and release the pad.
+    pub fn on_pad_gone(&mut self) -> Vec<Cmd> {
+        if self.talking {
+            return self.on_action(Action::TalkEnd);
+        }
+        match self.win {
+            Win::Ready if self.shown.is_some() => {
+                self.shown = None;
+                vec![Cmd::Hide, Cmd::Capture(false)]
+            }
+            Win::Creating if self.want.is_some() => {
+                self.want = None;
+                vec![Cmd::Capture(false)]
+            }
+            _ => vec![],
+        }
+    }
+
+    /// The page itself showed the pill for typing (e.g. after the key was saved): it needs the pad.
+    pub fn on_show_type(&mut self) -> Vec<Cmd> {
+        if self.win != Win::Ready {
+            return vec![];
+        }
+        self.shown = Some(Mode::Type);
+        vec![Cmd::Show(Mode::Type), Cmd::Capture(true)]
+    }
+
+    /// The window was asked for but hasn't reported ready.
+    pub fn creating(&self) -> bool {
+        self.win == Win::Creating
     }
 
     /// A question went to Gemini: the pill tucks away and the pad goes back to the game.
@@ -153,9 +232,21 @@ fn ov(app: &AppHandle) -> tauri::State<'_, Overlay> {
     app.state::<Overlay>()
 }
 
-/// Assistant button / keyboard shortcut actions.
+/// Assistant button actions.
 pub fn on_action(app: &AppHandle, a: Action) {
     let cmds = lk(&ov(app).state).on_action(a);
+    run(app, cmds);
+}
+
+/// Keyboard shortcut actions (a tap also focuses the field for real-keyboard typing).
+pub fn on_key_action(app: &AppHandle, a: Action) {
+    let cmds = lk(&ov(app).state).on_key_action(a);
+    run(app, cmds);
+}
+
+/// The pad disconnected (bridge status): don't leave the overlay holding a pad that isn't there.
+pub fn on_pad_gone(app: &AppHandle) {
+    let cmds = lk(&ov(app).state).on_pad_gone();
     run(app, cmds);
 }
 
@@ -167,13 +258,13 @@ fn run(app: &AppHandle, cmds: Vec<Cmd>) {
             Cmd::Hide => emit(app, "ov_mode", json!({ "mode": "hidden" })),
             Cmd::StartListening => {
                 let h = app.clone();
-                let d = Dictation::start(move |e| {
-                    let v = match e {
-                        SpeechEvent::Partial(t) => json!({ "text": t, "final": false }),
-                        SpeechEvent::Final(t) => json!({ "text": t, "final": true }),
-                        SpeechEvent::Error(m) => json!({ "error": m }),
-                    };
-                    emit(&h, "stt", v);
+                let d = Dictation::start(move |e| match e {
+                    SpeechEvent::Partial(t) => emit(&h, "stt", json!({ "text": t, "final": false })),
+                    SpeechEvent::Final(t) => emit(&h, "stt", json!({ "text": t, "final": true })),
+                    SpeechEvent::Error(m) => {
+                        let cmds = lk(&ov(&h).state).on_speech_error(m);
+                        run(&h, cmds);
+                    }
                 });
                 *lk(&ov(app).listening) = Some(d);
             }
@@ -184,10 +275,9 @@ fn run(app: &AppHandle, cmds: Vec<Cmd>) {
                 std::thread::spawn(move || {
                     let text = d.map(|d| d.stop()).unwrap_or_default();
                     if text.trim().is_empty() {
+                        let cmds = lk(&ov(&h).state).on_empty_transcript();
+                        run(&h, cmds);
                         emit(&h, "stt", json!({ "text": "", "final": true, "empty": true }));
-                        lk(&ov(&h).state).on_sent();
-                        capture(&h, false);
-                        emit(&h, "ov_mode", json!({ "mode": "hidden" }));
                     } else {
                         emit(&h, "stt", json!({ "text": text, "final": true }));
                         ask(&h, text);
@@ -195,6 +285,13 @@ fn run(app: &AppHandle, cmds: Vec<Cmd>) {
                 });
             }
             Cmd::Capture(on) => capture(app, on),
+            Cmd::SpeechError(m) => emit(app, "stt", json!({ "error": m })),
+            Cmd::FocusField => {
+                if let Some(w) = app.get_webview_window(LABEL) {
+                    take_focus(&w);
+                }
+                emit(app, "ov_focus", json!({}));
+            }
         }
     }
 }
@@ -214,7 +311,7 @@ fn place(app: &AppHandle, w: &tauri::WebviewWindow, height_logical: f64) {
     let o = ov(app);
     let scale = w.scale_factor().unwrap_or(1.0);
     let (pw, ph) = ((WIDTH * scale).round() as i32, (height_logical * scale).round() as i32);
-    let anchor = *lk(&o.anchor);
+    let anchor = (*lk(&o.anchor)).filter(|&(x, y)| overlay_win::on_screen(x, y - 1));
     let (cx, bottom) = anchor.unwrap_or_else(|| {
         let front = *lk(&o.prev_front);
         let (l, _t, r, b) = overlay_win::work_area(front).unwrap_or((0, 0, 1920, 1080));
@@ -228,6 +325,18 @@ fn open(app: &AppHandle) {
     let o = ov(app);
     *lk(&o.prev_front) = overlay_win::foreground();
     *lk(&o.anchor) = app.state::<AppState>().with_bridge(|b| b.settings().overlay_pos).flatten();
+    // If the page never reports ready (WebView2 fault), don't keep the pad from games.
+    let w = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_secs(10));
+        if lk(&ov(&w).state).creating() {
+            pad_core::log!("overlay never became ready; closing it");
+            if let Some(win) = w.get_webview_window(LABEL) {
+                let _ = win.destroy();
+            }
+            closed(&w);
+        }
+    });
     let h = app.clone();
     let _ = app.run_on_main_thread(move || {
         if h.get_webview_window(LABEL).is_some() {
@@ -360,13 +469,24 @@ pub fn overlay_close(app: AppHandle, window: tauri::WebviewWindow) {
     }
 }
 
-/// The player clicked into the text field: let the window take focus for real-keyboard typing.
-#[tauri::command]
-pub fn overlay_focus(window: tauri::WebviewWindow) {
+fn take_focus(window: &tauri::WebviewWindow) {
     if let Ok(hwnd) = window.hwnd() {
         overlay_win::set_no_activate(hwnd.0 as isize, false);
         overlay_win::focus(hwnd.0 as isize);
     }
+}
+
+/// The player clicked into the text field: let the window take focus for real-keyboard typing.
+#[tauri::command]
+pub fn overlay_focus(window: tauri::WebviewWindow) {
+    take_focus(&window);
+}
+
+/// The page showed the pill for typing itself (no key yet, key just saved): it needs the pad.
+#[tauri::command]
+pub fn overlay_show_type(app: AppHandle) {
+    let cmds = lk(&ov(&app).state).on_show_type();
+    run(&app, cmds);
 }
 
 /// The pill was dragged: remember its bottom-centre so it opens there next time.
@@ -420,6 +540,73 @@ mod tests {
         s.on_window_ready();
         s.on_sent();
         assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Show(Mode::Type), Cmd::Capture(true)]);
+    }
+
+    #[test]
+    fn speech_error_before_the_page_loads_is_shown_once_ready() {
+        let mut s = OverlayState::default();
+        s.on_action(Action::TalkStart);
+        s.on_speech_error("Turn on Online speech recognition");
+        assert_eq!(s.on_window_ready(), vec![Cmd::Show(Mode::Talk), Cmd::SpeechError("Turn on Online speech recognition")]);
+    }
+
+    #[test]
+    fn nothing_heard_leaves_the_pill_open_for_typing() {
+        let mut s = OverlayState::default();
+        s.on_action(Action::TalkStart);
+        s.on_window_ready();
+        s.on_action(Action::TalkEnd);
+        assert_eq!(s.on_empty_transcript(), vec![Cmd::Show(Mode::Type)], "pad stays with the overlay");
+        assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Hide, Cmd::Capture(false)]);
+    }
+
+    #[test]
+    fn pad_gone_while_typing_hands_back_and_tucks_away() {
+        let mut s = OverlayState::default();
+        s.on_action(Action::OverlayTap);
+        s.on_window_ready();
+        assert_eq!(s.on_pad_gone(), vec![Cmd::Hide, Cmd::Capture(false)]);
+        assert_eq!(s.on_pad_gone(), vec![], "once");
+    }
+
+    #[test]
+    fn pad_gone_mid_hold_ends_the_talk() {
+        let mut s = OverlayState::default();
+        s.on_action(Action::TalkStart);
+        s.on_window_ready();
+        assert_eq!(s.on_pad_gone(), vec![Cmd::SendTranscript]);
+    }
+
+    #[test]
+    fn page_showing_the_pill_takes_the_pad() {
+        let mut s = OverlayState::default();
+        s.on_action(Action::TalkStart);
+        s.on_window_ready();
+        s.on_sent();
+        assert_eq!(s.on_show_type(), vec![Cmd::Show(Mode::Type), Cmd::Capture(true)]);
+        assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Hide, Cmd::Capture(false)], "tap now hides it");
+    }
+
+    #[test]
+    fn keyboard_shortcut_tap_focuses_the_field() {
+        let mut s = OverlayState::default();
+        assert_eq!(s.on_key_action(Action::OverlayTap), vec![Cmd::Open, Cmd::Capture(true)]);
+        assert_eq!(s.on_window_ready(), vec![Cmd::Show(Mode::Type), Cmd::FocusField]);
+        s.on_sent();
+        assert_eq!(s.on_key_action(Action::OverlayTap), vec![Cmd::Show(Mode::Type), Cmd::Capture(true), Cmd::FocusField]);
+        let mut p = OverlayState::default();
+        p.on_action(Action::OverlayTap);
+        assert_eq!(p.on_window_ready(), vec![Cmd::Show(Mode::Type)], "the pad's tap doesn't take focus");
+    }
+
+    #[test]
+    fn creating_is_reported_until_ready() {
+        let mut s = OverlayState::default();
+        assert!(!s.creating());
+        s.on_action(Action::OverlayTap);
+        assert!(s.creating());
+        s.on_window_ready();
+        assert!(!s.creating());
     }
 
     #[test]

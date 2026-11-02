@@ -11,7 +11,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, RegisterHotKey, UnregisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_NOREPEAT, MOD_SHIFT,
     MOD_WIN,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GetMessageW, PostThreadMessageW, MSG, WM_APP, WM_HOTKEY, WM_QUIT};
+use windows::Win32::UI::WindowsAndMessaging::{
+    GetMessageW, PeekMessageW, PostThreadMessageW, MSG, PM_NOREMOVE, WM_APP, WM_HOTKEY, WM_QUIT, WM_USER,
+};
 
 const WM_SET: u32 = WM_APP + 1;
 const ID: i32 = 1;
@@ -41,6 +43,11 @@ impl HotkeyThread {
         let (tid_tx, tid_rx) = mpsc::channel();
         let p = pending.clone();
         let _ = std::thread::Builder::new().name("overlay-hotkey".into()).spawn(move || {
+            // Create this thread's message queue before anyone can post to it.
+            let mut warm = MSG::default();
+            unsafe {
+                let _ = PeekMessageW(&mut warm, None, WM_USER, WM_USER, PM_NOREMOVE);
+            }
             let _ = tid_tx.send(unsafe { GetCurrentThreadId() });
             let t0 = Instant::now();
             let ms = || t0.elapsed().as_millis() as u64;

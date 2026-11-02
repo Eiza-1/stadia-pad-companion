@@ -2,7 +2,10 @@
 //! taking focus from the app in front (so a game never pauses or leaves fullscreen).
 
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST};
+use windows::Win32::Foundation::POINT;
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetForegroundWindow, GetWindowLongPtrW, SetForegroundWindow, SetWindowLongPtrW, GWL_EXSTYLE, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
@@ -44,4 +47,22 @@ pub fn focus(hwnd: isize) {
             let _ = SetForegroundWindow(HWND(hwnd as *mut _));
         }
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+
+    #[test]
+    fn a_spot_on_an_unplugged_screen_is_not_on_screen() {
+        assert!(!on_screen(-100_000, -100_000));
+        let (w, h) = unsafe { (GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)) };
+        assert!(on_screen(w / 2, h / 2), "the primary screen's centre is");
+    }
+}
+
+/// Whether a point (physical px) is on a screen that exists now (a saved spot may be on an unplugged one).
+pub fn on_screen(x: i32, y: i32) -> bool {
+    unsafe { !MonitorFromPoint(POINT { x, y }, MONITOR_DEFAULTTONULL).is_invalid() }
 }

@@ -82,12 +82,15 @@ impl Special {
     }
 
     pub fn set(&mut self, a: AssistantAction, c: CaptureAction, s: StadiaAction) {
+        // A save that leaves the Assistant choice alone must not cut a talk in progress.
+        if a != self.assistant {
+            self.assist.clear();
+        }
         self.assistant = a;
         self.capture = c;
         self.stadia = s;
         self.capture_hold = None;
         self.stadia_hold = None;
-        self.assist.clear();
     }
 
     pub fn update(&mut self, s: &PadState, now_ms: u64) -> Vec<Action> {
@@ -224,11 +227,22 @@ mod tests {
     }
 
     #[test]
-    fn set_clears_a_pending_hold() {
+    fn switching_the_assistant_choice_clears_a_pending_hold() {
         let mut s = ov();
         s.update(&b(Buttons::ASSISTANT), 0);
+        s.set(AssistantAction::Off, CaptureAction::TapHold, StadiaAction::GuideHold);
         s.set(AssistantAction::Overlay, CaptureAction::TapHold, StadiaAction::GuideHold);
         assert!(s.update(&b(Buttons::empty()), 50).is_empty());
+    }
+
+    #[test]
+    fn saving_unrelated_settings_keeps_a_pending_assistant_hold() {
+        // Any settings save (e.g. the overlay remembering its position) re-applies settings mid-hold.
+        let mut s = ov();
+        s.update(&b(Buttons::ASSISTANT), 0);
+        s.update(&b(Buttons::ASSISTANT), 300); // TalkStart
+        s.set(AssistantAction::Overlay, CaptureAction::Off, StadiaAction::GuideOnly);
+        assert_eq!(s.update(&b(Buttons::empty()), 900), vec![Action::TalkEnd], "the hold survives");
     }
 
     #[test]
