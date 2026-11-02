@@ -159,3 +159,6 @@ body.still .amb b, body.still .padwrap, body.still .cpill.live::after, body.insi
 .toast { position: fixed; left: 50%; bottom: 24px; translate: -50% 0; z-index: 20; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-radius: 16px; background: var(--sc-highest); box-shadow: 0 16px 40px rgba(0, 0, 0, .45); font: 500 13px var(--font); opacity: 0; transform: translateY(16px); pointer-events: none; transition: all .45s var(--spring); }
 .toast.show { opacity: 1; transform: none; }
 .toast .ms { color: var(--primary); font-size: 20px; }
+
+/* The one-time Gemini overlay note belongs to Home, not over a configuration page. */
+body.inside .banner.intro { display: none; }

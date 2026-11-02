@@ -241,9 +241,15 @@ function renderBanners(s) {
     list.push(["warning", "HidHide isn't installed. Some games and Steam may see two controllers.", "Install", "https://github.com/nefarius/HidHide/releases/latest"]);
   for (const m of s.other_mappers || [])
     list.push(["warning", `${m} is also running and may double your input. Close it for the best experience.`]);
+  if (settings.assistant === "Overlay" && !settings.overlay_intro_seen)
+    list.push(["auto_awesome", "The Assistant button now opens the Gemini overlay over any app: tap to type, hold to talk. Switch back under Special buttons.", "Got it", "intro"]);
   const box = $("banners");
   box.innerHTML = list
-    .map(([ico, text, btn, url]) => `<div class="banner"><span class="ms">${ico}</span><span>${text}</span>${btn ? `<button data-url="${url}">${btn}</button>` : ""}</div>`)
+    .map(([ico, text, btn, url]) => `<div class="banner${url === "intro" ? " intro" : ""}"><span class="ms">${ico}</span><span>${text}</span>${btn ? `<button data-url="${url}">${btn}</button>` : ""}</div>`)
     .join("");
-  box.querySelectorAll("button").forEach((b) => (b.onclick = () => invoke("open_external", { url: b.dataset.url })));
+  box.querySelectorAll("button").forEach((b) => (b.onclick = () => {
+    if (b.dataset.url !== "intro") return invoke("open_external", { url: b.dataset.url });
+    save((st) => (st.overlay_intro_seen = true));
+    renderBanners(status || s);
+  }));
 }

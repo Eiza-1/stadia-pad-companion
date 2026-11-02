@@ -15,6 +15,9 @@ Bluetooth and every game, Steam, Epic and EA launcher sees one Xbox 360 controll
   Competitive or Immersive profile and a strength setting (USB only: see below).
 - **Button mapping, dead zones, response curves, trigger ranges, hair trigger, profiles.** The live pad photo moves
   with the real one on every configuration page.
+- **Gemini overlay.** Press Assistant over any app: tap to type with the pad (the Orbit rail keyboard), hold to
+  talk and let go to send. Short answers appear at the bottom of the screen and fade on their own, or can be read
+  aloud. Uses your own free Gemini key (Other settings › Gemini), saved only on your PC.
 - **Tray menu.** Right-click the tray icon for the pad, its connection and battery, Open, Settings, Start with
   Windows and Quit.
 - **Costs nothing in the background.** A Rust core with no busy loops. The window is destroyed when you close it,

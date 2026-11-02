@@ -1,9 +1,10 @@
-// Other settings: start with Windows, hide pad from games, logs, version, drivers.
+// Other settings: start with Windows, hide pad from games, Gemini (key, answer voice, overlay position),
+// logs, version, drivers.
 
 import { settings, status, save, onSettings, onStatus, invoke, appInfo } from "../ipc.js";
-import { h, toggle, panel } from "../ui.js";
+import { h, toggle, panel, seg } from "../ui.js";
 
-let start, hide, kv;
+let start, hide, kv, voiceSeg;
 
 export function init(el) {
   el.innerHTML = `<h1>Other settings</h1><p class="lede">Pad Companion keeps running in the tray when you close this window, so the controller keeps working. To quit, right-click the tray icon and choose Quit.</p>`;
@@ -21,13 +22,70 @@ export function init(el) {
   about.append(kv, logs);
 
   const grid = h(`<div class="grid2"></div>`);
-  grid.append(p, about);
+  grid.append(p, about, geminiPanel());
   el.append(grid);
 
   appInfo().then((i) => { kv.dataset.version = i.version; renderAbout(); });
-  onSettings(() => { start.set(settings.start_with_windows); hide.set(settings.hide_from_games); });
+  onSettings(() => { start.set(settings.start_with_windows); hide.set(settings.hide_from_games); voiceSeg.set(settings.answer_voice); });
   onStatus(renderAbout);
   renderAbout();
+}
+
+/** Your Gemini key (saved only on this PC), how answers are given, and the overlay's position. */
+function geminiPanel() {
+  const g = panel("Gemini", "auto_awesome");
+  const keyRow = h(`<div class="srow"><span class="stext"><b>Your Gemini key</b><small></small></span><span class="keybtns"></span></div>`);
+  const form = h(`<div class="keyform" hidden><input type="password" placeholder="Paste your key (AIza…)" autocomplete="off" spellcheck="false"><button class="btn tonal">Save</button><button class="btn text">Get a free key</button></div>`);
+  const msg = h(`<div class="note-box info" hidden><span class="ms">info</span><span></span></div>`);
+  const say = (text, err = false) => {
+    msg.hidden = !text;
+    msg.className = `note-box${err ? "" : " info"}`;
+    msg.querySelector(".ms").textContent = err ? "error" : "info";
+    msg.querySelector("span:last-child").textContent = text;
+  };
+  const render = async () => {
+    const ok = await invoke("gemini_key_status");
+    keyRow.querySelector("small").textContent = ok
+      ? "Saved on this PC. Gemini answers in the overlay use it."
+      : "Not set. Get a free key from Google AI Studio; it's saved only on this PC.";
+    const btns = keyRow.querySelector(".keybtns");
+    btns.innerHTML = "";
+    const add = h(`<button class="btn tonal">${ok ? "Change" : "Add key"}</button>`);
+    add.onclick = () => { form.hidden = false; form.querySelector("input").focus(); };
+    btns.append(add);
+    if (ok) {
+      const rm = h(`<button class="btn text">Remove</button>`);
+      rm.onclick = async () => { await invoke("gemini_key_clear"); say("Key removed from this PC."); render(); };
+      btns.append(rm);
+    }
+  };
+  const [input, saveBtn, studio] = form.children;
+  studio.onclick = () => invoke("gemini_open_studio");
+  saveBtn.onclick = async () => {
+    say("Checking your key…");
+    try {
+      await invoke("gemini_key_set", { key: input.value });
+      input.value = "";
+      form.hidden = true;
+      say("Key saved.");
+      render();
+    } catch (e) {
+      say(String(e), true);
+    }
+  };
+  input.addEventListener("keydown", (e) => e.key === "Enter" && saveBtn.onclick());
+
+  const voiceRow = h(`<div class="srow col"><span class="stext"><b>Answers</b><small>Shown as text, read aloud, or both.</small></span></div>`);
+  voiceSeg = seg([{ value: "Text", label: "Text" }, { value: "Voice", label: "Voice" }, { value: "Both", label: "Both" }],
+    settings.answer_voice, (v) => save((s) => (s.answer_voice = v)));
+  voiceRow.append(voiceSeg);
+
+  const posRow = h(`<div class="srow"><span class="stext"><b>Overlay position</b><small>Drag the pill by its handle to move it. This puts it back at the bottom centre.</small></span><button class="btn text">Reset</button></div>`);
+  posRow.querySelector("button").onclick = () => invoke("overlay_reset_pos").then(() => say("The overlay opens at the bottom centre again."));
+
+  g.append(keyRow, form, msg, voiceRow, posRow);
+  render();
+  return g;
 }
 
 function renderAbout() {

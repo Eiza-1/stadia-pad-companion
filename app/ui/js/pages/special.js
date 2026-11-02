@@ -1,4 +1,4 @@
-// Special buttons: Assistant → Gemini (app, else default browser), Capture → screenshot / recording
+// Special buttons: Assistant → Gemini overlay (tap to type, hold to talk) or the Gemini app, Capture → screenshot / recording
 // with Game Bar, Steam, NVIDIA or AMD, Stadia → Guide (+ hold).
 
 import { renderPad } from "../pad.js";
@@ -24,7 +24,13 @@ const USES = {
   Windows: ["warning", "No recorder found, so taps save a full-screen screenshot to Pictures\\Screenshots and recording won't work. Turn on Settings › Gaming › Captures, or start Steam, the NVIDIA overlay or AMD Adrenalin."],
 };
 const NAMES = { GameBar: "Game Bar", Steam: "Steam", Nvidia: "NVIDIA", Amd: "AMD" };
-let toolNote, asked = 0;
+let toolNote, asked = 0, assistText, appNote;
+
+const ASSIST = {
+  Overlay: "Opens the Gemini overlay over any app. Tap to type with the pad, hold to talk and let go to send. Answers appear at the bottom of the screen.",
+  Gemini: "Opens your Gemini app, or Gemini in your default browser if the app isn't installed. Brings it to the front if it's already open.",
+  Off: "Does nothing.",
+};
 
 export function init(el) {
   el.innerHTML = `<h1>Special buttons</h1><p class="lede">The Assistant and Capture buttons have real jobs here. They never reach the game, so they can't trigger anything by accident.</p>`;
@@ -40,9 +46,10 @@ export function init(el) {
     grid.append(p);
     return p;
   };
-  const gemini = card(`<img src="assets/gemini-light.svg" alt="Gemini">`, "Assistant button",
-    "Opens your Gemini app, or Gemini in your default browser if the app isn't installed. Brings it to the front if it's already open.",
-    "assistant", [{ value: "Gemini", label: "Gemini" }, { value: "Off", label: "Off" }]);
+  const gemini = card(`<img src="assets/gemini-light.svg" alt="Gemini">`, "Assistant button", ASSIST.Overlay,
+    "assistant", [{ value: "Overlay", label: "Overlay" }, { value: "Gemini", label: "Gemini app" }, { value: "Off", label: "Off" }]);
+  segs.assistant.classList.add("compact");
+  assistText = gemini.querySelector("p");
   const capture = card(`<span class="ms">screenshot_monitor</span>`, "Capture button",
     "Tap for an instant screenshot. Hold for half a second to start recording; hold again to stop.",
     "capture", [{ value: "TapHold", label: "Tap + hold" }, { value: "Off", label: "Off" }]);
@@ -53,7 +60,9 @@ export function init(el) {
 
   appInfo().then((info) => {
     const text = info.gemini_app ? "Uses your installed Gemini app." : "No Gemini app found, so Gemini opens in your default browser.";
-    gemini.append(h(`<div class="note-box info"><span class="ms">${info.gemini_app ? "apps" : "public"}</span><span>${text}</span></div>`));
+    appNote = h(`<div class="note-box info"><span class="ms">${info.gemini_app ? "apps" : "public"}</span><span>${text}</span></div>`);
+    gemini.append(appNote);
+    refreshAssist();
   });
 
   // Capture with: Automatic follows Game Bar, then Steam (in Steam games), NVIDIA, then AMD.
@@ -67,7 +76,15 @@ export function init(el) {
   onSettings((s) => {
     for (const k in segs) segs[k].set(s[k]);
     refreshCapture();
+    refreshAssist();
   });
+  refreshAssist();
+}
+
+/** The Assistant card describes the chosen behaviour; the Gemini-app note only shows for that choice. */
+function refreshAssist() {
+  if (assistText) assistText.textContent = ASSIST[settings.assistant] || ASSIST.Off;
+  if (appNote) appNote.hidden = settings.assistant !== "Gemini";
 }
 
 /** Says which recorder the button will drive now, and what it needs. */
