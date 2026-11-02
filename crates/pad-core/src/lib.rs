@@ -1,4 +1,5 @@
 pub mod bridge;
+pub mod gate;
 pub mod mapping;
 pub mod report;
 pub mod rumble;

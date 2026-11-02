@@ -104,6 +104,11 @@ fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
                             let _ = w.emit("pad", serde_json::json!({ "state": state, "out": out }));
                         }
                     }
+                    BridgeEvent::Captured(state) => {
+                        if let Some(w) = app.get_webview_window("overlay") {
+                            let _ = w.emit("pad", state);
+                        }
+                    }
                     BridgeEvent::Stats(s) => {
                         if let Some(w) = window {
                             let _ = w.emit("stats", s);

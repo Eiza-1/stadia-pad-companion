@@ -117,6 +117,7 @@ Press Enter to close.");
             }
             Ok(BridgeEvent::Pad { state, out }) => last_pad = Some((state, out)),
             Ok(BridgeEvent::Action(a)) => println!("action {a:?}"),
+            Ok(BridgeEvent::Captured(s)) => println!("captured {s:?}"),
             Err(_) => {}
         }
     }

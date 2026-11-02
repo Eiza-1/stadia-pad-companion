@@ -1,6 +1,7 @@
 //! The always-on bridge: finds the Stadia pad (USB or Bluetooth LE), hides it from games, and drives
 //! one virtual Xbox 360 pad from its reports. Runs on its own thread; idle cost is one wake per second.
 
+use crate::gate::Gate;
 use crate::log;
 use crate::mapping::{Mapper, XOut};
 use crate::report::{parse_input, rumble_report, PadState};
@@ -125,6 +126,8 @@ pub enum BridgeEvent {
     Stats(StatsSnapshot),
     Status(Status),
     Action(Action),
+    /// The pad as it is, while the Gemini overlay holds it (every change; not throttled).
+    Captured(PadState),
 }
 
 /// Live pad events are throttled to ~60/s; the UI cannot draw faster and the bridge stays light.
@@ -186,6 +189,8 @@ struct Shared {
     /// Rumble handle of the current session, for the settings page's rumble test.
     /// The session's rumble engine (USB only; `None` over Bluetooth or while disconnected).
     rumble: Mutex<Option<Sender<RumbleMsg>>>,
+    /// The Gemini overlay holds the pad: the game gets a neutral pad, the overlay gets `Captured`.
+    capture: AtomicBool,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -270,6 +275,7 @@ impl Bridge {
             live: AtomicBool::new(true),
             rumble: Mutex::new(None),
             thread: Mutex::new(None),
+            capture: AtomicBool::new(false),
         });
         let sh = shared.clone();
         let t = thread::Builder::new().name("pad-bridge".into()).spawn(move || run(sh)).expect("spawn bridge thread");
@@ -315,6 +321,13 @@ impl BridgeHandle {
     /// Status and action events always flow to the subscriber.
     pub fn set_live(&self, on: bool) {
         self.shared.live.store(on, Ordering::Relaxed);
+    }
+
+    /// Hands the pad to the Gemini overlay (`true`) or back to games (`false`). Takes effect on the
+    /// next report, or within the read timeout (≤ 1 s) when the pad is quiet; in practice the Assistant
+    /// press that triggers it is followed by its own release report.
+    pub fn set_capture(&self, on: bool) {
+        self.shared.capture.store(on, Ordering::Relaxed);
     }
 
     /// Plays the Test rumble scene (rumble::DEMO) through the selected rumble profile and strength.
@@ -668,6 +681,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         .and_then(|a| spawn_battery(sh, a, battery_alive.clone()));
 
     let mut last_state = PadState::default();
+    let mut gate = Gate::new();
     let mut throttle: PadThrottle<(PadState, XOut)> = PadThrottle::default();
     let mut next_tick = now_us() + 1_000_000;
     let watch = Watcher::spawn(sh, dev.transport, hide);
@@ -701,7 +715,17 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
             Ok(Some((data, arrival))) => match parse_input(&data) {
                 Some(state) => {
                     let actions = special.update(&state, arrival / 1000);
-                    let out = mapper.map(&state);
+                    let capture = sh.capture.load(Ordering::Relaxed);
+                    if capture != gate.captured() {
+                        gate.set_captured(capture, &state);
+                        if capture {
+                            sh.emit(BridgeEvent::Captured(state));
+                        }
+                    } else if capture && state != last_state {
+                        sh.emit(BridgeEvent::Captured(state));
+                    }
+                    gate.observe(&state);
+                    let out = mapper.map(&gate.game_state(&state));
                     pad.submit(&out);
                     stats.record(arrival, now_us());
                     last_state = state;
@@ -714,7 +738,19 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
                 }
                 None => Vec::new(),
             },
-            Ok(None) => special.update(&last_state, now_us() / 1000),
+            Ok(None) => {
+                // No report: a capture change still applies now (the game must see a neutral pad
+                // as soon as the overlay takes it, even while the pad is quiet).
+                let capture = sh.capture.load(Ordering::Relaxed);
+                if capture != gate.captured() {
+                    gate.set_captured(capture, &last_state);
+                    if capture {
+                        sh.emit(BridgeEvent::Captured(last_state));
+                    }
+                    pad.submit(&mapper.map(&gate.game_state(&last_state)));
+                }
+                special.update(&last_state, now_us() / 1000)
+            }
             Err(e) => break Err(io(e)),
         };
         for a in actions {
