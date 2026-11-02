@@ -1,6 +1,6 @@
 // Device view: sidebar navigation, profile chip, and the seven settings pages.
 
-import { settings, status, onSettings, invoke, toast } from "./ipc.js";
+import { settings, status, onSettings, invoke, toast, appInfo } from "./ipc.js";
 import * as mapping from "./pages/mapping.js";
 import * as special from "./pages/special.js";
 import * as performance from "./pages/performance.js";
@@ -16,7 +16,7 @@ const $ = (id) => document.getElementById(id);
  *  become GitHub issues there. The app's details ride along so the report form is pre-filled. */
 const SUPPORT_SITE = "https://eiza-1.github.io/pad-companion/";
 let appVersion = "";
-invoke("app_info").then((i) => (appVersion = i?.version || "")).catch(() => {});
+appInfo().then((i) => (appVersion = i?.version || "")).catch(() => {});
 function supportUrl() {
   const p = new URLSearchParams();
   if (appVersion) p.set("v", appVersion);

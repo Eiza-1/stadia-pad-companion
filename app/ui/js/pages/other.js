@@ -1,12 +1,12 @@
 // Other settings: start with Windows, hide pad from games, logs, version, drivers.
 
-import { settings, status, save, onSettings, onStatus, invoke } from "../ipc.js";
+import { settings, status, save, onSettings, onStatus, invoke, appInfo } from "../ipc.js";
 import { h, toggle, panel } from "../ui.js";
 
 let start, hide, kv;
 
 export function init(el) {
-  el.innerHTML = `<h1>Other settings</h1><p class="lede">Pad Companion keeps running in the tray when you close this window, so the controller keeps working. Quit it from the tray icon.</p>`;
+  el.innerHTML = `<h1>Other settings</h1><p class="lede">Pad Companion keeps running in the tray when you close this window, so the controller keeps working. To quit, right-click the tray icon and choose Quit.</p>`;
   const p = panel("General", "tune");
   start = toggle({ label: "Start with Windows", desc: "Starts quietly in the tray when you sign in.", checked: settings.start_with_windows,
     onChange: (v) => save((s) => (s.start_with_windows = v)) });
@@ -24,7 +24,7 @@ export function init(el) {
   grid.append(p, about);
   el.append(grid);
 
-  invoke("app_info").then((i) => { kv.dataset.version = i.version; renderAbout(); });
+  appInfo().then((i) => { kv.dataset.version = i.version; renderAbout(); });
   onSettings(() => { start.set(settings.start_with_windows); hide.set(settings.hide_from_games); });
   onStatus(renderAbout);
   renderAbout();

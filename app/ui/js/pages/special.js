@@ -3,7 +3,7 @@
 
 import { renderPad } from "../pad.js";
 import { current } from "../theme.js";
-import { settings, save, invoke, onSettings } from "../ipc.js";
+import { settings, save, invoke, onSettings, appInfo } from "../ipc.js";
 import { h, seg } from "../ui.js";
 
 let segs = {};
@@ -51,7 +51,7 @@ export function init(el) {
     "stadia", [{ value: "GuideHold", label: "Guide + hold" }, { value: "GuideOnly", label: "Guide only" }]);
   el.append(grid);
 
-  invoke("app_info").then((info) => {
+  appInfo().then((info) => {
     const text = info.gemini_app ? "Uses your installed Gemini app." : "No Gemini app found, so Gemini opens in your default browser.";
     gemini.append(h(`<div class="note-box info"><span class="ms">${info.gemini_app ? "apps" : "public"}</span><span>${text}</span></div>`));
   });

@@ -4,6 +4,10 @@ const tauri = window.__TAURI__;
 export const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
 export const listen = (event, fn) => tauri.event.listen(event, (e) => fn(e.payload));
 
+/** App version and what this PC offers (Game Bar, Gemini app). Asked once: it scans the Start menu. */
+let info = null;
+export const appInfo = () => (info ??= invoke("app_info"));
+
 export let settings = null;
 export let status = null;
 const subs = { settings: [], status: [] };
