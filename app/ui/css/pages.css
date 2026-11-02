@@ -3,12 +3,13 @@
 .panel h3 { margin: 0; display: flex; align-items: center; gap: 10px; font: 500 17px var(--font); }
 .panel h3 .ms { color: var(--primary); }
 .panel p { margin: 6px 0 0; color: var(--on-sv); font: 400 13px/1.5 var(--font); }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+/* minmax(0, 1fr): columns may shrink below their content, so cards never run off a narrow window. */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
 .stack { display: flex; flex-direction: column; gap: 16px; }
 
 .seg { display: flex; gap: 4px; margin-top: 14px; padding: 4px; border-radius: 99px; background: var(--sc-lowest); }
-.seg button { flex: 1; min-height: 38px; padding: 0 10px; border-radius: 99px; display: grid; place-items: center; font: 600 13px var(--font); color: var(--on-sv); position: relative; text-align: center; transition: all .45s var(--spring); }
+.seg button { flex: 1; min-height: 38px; padding: 0 10px; border-radius: 99px; display: grid; place-items: center; font: 600 13px var(--font); color: var(--on-sv); position: relative; text-align: center; white-space: nowrap; transition: all .45s var(--spring); }
 .seg button:hover:not(.dis) { background: var(--sc-high); }
 .seg button.on { background: var(--primary); color: var(--on-primary); }
 .seg button.dis { opacity: .38; cursor: not-allowed; }
@@ -36,7 +37,7 @@
 .slider { margin-top: 14px; }
 .slabel { display: flex; justify-content: space-between; font: 500 13px var(--font); color: var(--on-sv); }
 .slabel output { color: var(--on-surface); font-variant-numeric: tabular-nums; }
-.slider input { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 8px 0 0; background: transparent; cursor: pointer; --p: 50%; }
+.slider input { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; margin: 14px 0 6px; background: transparent; cursor: pointer; --p: 50%; } /* room for the tall thumb and its ring */
 .slider input::-webkit-slider-runnable-track { height: 16px; border-radius: 99px; background: linear-gradient(90deg, var(--primary) var(--p), var(--sc-highest) var(--p)); }
 .slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 4px; height: 32px; margin-top: -8px; border-radius: 2px; background: var(--primary); box-shadow: 0 0 0 6px var(--sc); transition: transform .3s var(--spring); }
 .slider input:active::-webkit-slider-thumb { transform: scaleX(.6); }
@@ -78,7 +79,9 @@ svg.pad .trig .fill { fill: var(--hi, var(--primary)); transform: scaleX(0); tra
 svg.pad .trig[data-t="r2"] .fill { transform-origin: right; }
 
 /* ---------- mapping ---------- */
-.mapstage { position: relative; height: calc(100% - 70px); min-height: 460px; }
+/* The stage takes whatever height the heading leaves, so the page fits without scrolling. */
+#p-mapping.on { display: flex; flex-direction: column; }
+.mapstage { position: relative; flex: 1; min-height: 460px; }
 .mapstage svg.pad { position: absolute; }
 .mapstage .lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .mapstage .lines path { fill: none; stroke: color-mix(in srgb, var(--primary) 45%, transparent); stroke-width: 1.2; }
@@ -134,13 +137,13 @@ svg.pad .trig[data-t="r2"] .fill { transform-origin: right; }
 .spark .area { fill: color-mix(in srgb, var(--primary) 14%, transparent); stroke: none; }
 
 /* ---------- sticks ---------- */
-.stickviz { display: flex; gap: 22px; align-items: center; margin-top: 14px; }
-.stickviz svg { width: 140px; height: 140px; flex: none; }
+.stickviz { display: flex; gap: clamp(12px, 2vw, 22px); align-items: center; margin-top: 14px; }
+.stickviz svg { width: clamp(96px, 30%, 140px); height: auto; aspect-ratio: 1; flex: none; }
 .stickviz .ring { fill: var(--sc-lowest); stroke: color-mix(in srgb, var(--on-surface) 12%, transparent); }
 .stickviz .dz { fill: color-mix(in srgb, var(--error) 18%, transparent); stroke: color-mix(in srgb, var(--error) 50%, transparent); stroke-dasharray: 3 3; transition: r .3s var(--spring); }
 .stickviz .raw { fill: var(--on-sv); opacity: .5; }
 .stickviz .out { fill: var(--primary); filter: drop-shadow(0 0 6px var(--primary)); }
-.stickviz .ctl { flex: 1; }
+.stickviz .ctl { flex: 1; min-width: 0; }
 .trigbars { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
 .trigbar small { font: 500 12px var(--font); color: var(--on-sv); }
 .trigbar div { position: relative; height: 14px; margin-top: 6px; border-radius: 99px; background: var(--sc-lowest); overflow: hidden; }
