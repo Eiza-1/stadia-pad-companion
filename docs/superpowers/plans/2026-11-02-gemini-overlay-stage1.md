@@ -21,7 +21,8 @@
 - The Gemini model id lives in exactly one constant: `pad_core::gemini::MODEL = "gemini-flash-latest"`.
 - Fonts: Google Sans Flex and Noto Color Emoji (COLRv1), both SIL OFL, bundled under `app/ui/assets/fonts/` with their licences.
 - Assistant setting: `Overlay` (new default) / `Gemini` (open the app, unchanged behaviour) / `Off`. Upgrading users with `Gemini` move to `Overlay` once.
-- Hold threshold: `ASSIST_HOLD_MS = 300`.
+- Hold threshold: `ASSIST_HOLD_MS = 300` (pad button and keyboard shortcut alike).
+- Keyboard shortcut: default Ctrl + Alt + G; no global keyboard hook; plain letters/digits/Space/Enter without a modifier refused.
 - Commit messages: no AI attribution lines (user preference).
 - Never build the installer unless the user asks (user preference). `cargo check`/`cargo test` via the MSVC wrapper (`vcargo`, see README "Build from source") are fine.
 
@@ -263,3 +264,19 @@ Write each with the existing test helpers in `special.rs`; assertions as in the 
 - [ ] **Step 2:** `vcargo test --workspace`, `node --test app/ui/js/overlay/`, `sh scripts/check-ui.sh` → all pass; headless sweep of every page (as in the earlier review) → no console errors.
 - [ ] **Step 3:** Manual end-to-end with the pad over a borderless game and over the desktop (only after the user asks for a build): tap → type with the rail → Menu → card fades; hold → live words → release → card; Performance page read-outs unchanged with the overlay closed and open; Task Manager shows no overlay WebView after it closes.
 - [ ] **Step 4:** Commit `feat(settings): Gemini overlay options, key management, answer voice`.
+
+### Task 11: Keyboard shortcut for the overlay
+
+**Files:**
+- Create: `crates/pad-core/src/hotkey.rs` (pure: `Hotkey` type, validation, tap/hold timing) and `app/src-tauri/src/hotkey.rs` (Win32 registration thread)
+- Modify: `crates/pad-core/src/settings.rs` (`Settings.overlay_hotkey: Option<Hotkey>`, default `Some(Ctrl+Alt+G)`), `app/src-tauri/src/main.rs`, `app/ui/js/pages/other.js` (shortcut recorder in the Gemini section)
+
+**Interfaces:**
+- Consumes: `Action::{OverlayTap, TalkStart, TalkEnd}` (Task 2) and the overlay dispatcher (Task 7).
+- Produces: `#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug)] pub struct Hotkey { pub ctrl: bool, pub alt: bool, pub shift: bool, pub win: bool, pub vk: u16 }`; `pub fn validate(h: &Hotkey) -> Result<(), &'static str>` ("Add Ctrl, Alt, Shift or Win to that key"); `pub fn label(h: &Hotkey) -> String` ("Ctrl + Alt + G"); `pub struct KeyHold` with `fn pressed(now_ms)`, `fn poll(now_ms, still_down: bool) -> Option<Action>` giving the same `OverlayTap` / `TalkStart` / `TalkEnd` sequence as the pad button. Command `set_overlay_hotkey(h: Option<Hotkey>) -> Result<(), String>` (registers first, saves only on success; error "That shortcut is already used by Windows or another app").
+
+- [ ] **Step 1: Write failing tests** in `pad-core/src/hotkey.rs`: `validate` refuses `{vk: 'G'}` alone, `{vk: VK_SPACE}` alone, accepts `{ctrl, alt, vk: 'G'}` and `{vk: VK_F13}` alone and `{vk: VK_PAUSE}` alone; `label` of Ctrl+Alt+G == "Ctrl + Alt + G"; `KeyHold`: pressed at 0, poll(120, false) → `OverlayTap`; pressed 0, poll(300, true) → `TalkStart`, poll(800, false) → `TalkEnd`; serde round-trip of `Settings.overlay_hotkey`.
+- [ ] **Step 2:** `vcargo test -p pad-core hotkey` → FAIL.
+- [ ] **Step 3:** Implement. App side: one thread with a message loop; `RegisterHotKey(None, 1, mods | MOD_NOREPEAT, vk)`; on `WM_HOTKEY` call `KeyHold::pressed` and poll `GetAsyncKeyState(vk) < 0` every 15 ms only until release, feeding results into the overlay dispatcher; re-register on settings change by posting a thread message; unregister on quit. Settings UI: "Shortcut" row showing the label, "Change" listens for the next keydown combo in the page (Esc cancels), "Off".
+- [ ] **Step 4:** `vcargo test --workspace` → PASS; `vcargo check -p pad-companion` → no warnings.
+- [ ] **Step 5:** Commit `feat(overlay): keyboard shortcut (tap to type, hold to talk)`.

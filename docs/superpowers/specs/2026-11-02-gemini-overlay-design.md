@@ -35,6 +35,18 @@ Behaviour:
 - **Waveform** starts a Live voice conversation; **Share screen with Live** starts one that can see the screen.
 - Close: Assistant tap while open with an empty field, **B** on an empty field, Esc, or after inactivity.
 
+### Keyboard shortcut (user's addition at approval)
+
+For players who use Pad Companion just for Gemini, or don't want to reach for the pad: a global keyboard
+shortcut that does exactly what the Assistant button does (tap = type, hold = talk, release = send).
+
+- Mappable to any key or combination in Settings ("press the keys you want"): e.g. F13, Pause, Ctrl + Alt + G.
+- My calls: default **Ctrl + Alt + G**; a plain letter, digit, Space or Enter without a modifier is refused
+  (it would stop that key working everywhere); "Off" is allowed; if Windows or another app already owns the
+  combination, Settings says so and keeps the old one.
+- Works without a Stadia pad connected. No keyboard hook: Windows notifies the app only for that shortcut,
+  and the key is checked only while it is held (to tell tap from hold), so ordinary typing is never seen.
+
 ### Answers
 
 - A short card appears above the pill. Gemini is asked for brief, gaming-focused answers (one to three
