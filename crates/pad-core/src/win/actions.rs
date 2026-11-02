@@ -304,7 +304,8 @@ pub fn run(action: Action) {
                 None => log!("{action:?}: {r:?} can't do this (no recorder available)"),
             }
         }
-        Action::OpenCompanion => {}
+        // Handled by the app (window / overlay), not here.
+        Action::OpenCompanion | Action::OverlayTap | Action::TalkStart | Action::TalkEnd => {}
     }
 }
 

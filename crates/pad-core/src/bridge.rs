@@ -719,7 +719,7 @@ fn session(sh: &Arc<Shared>, dev: &DeviceInfo) -> Result<(), BridgeError> {
         };
         for a in actions {
             log!("action {a:?}");
-            if a != Action::OpenCompanion {
+            if matches!(a, Action::OpenGemini | Action::Screenshot | Action::ToggleRecording) {
                 let _ = lock(&sh.actions).send(a);
             }
             sh.emit(BridgeEvent::Action(a));
