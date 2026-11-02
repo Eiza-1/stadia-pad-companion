@@ -63,6 +63,20 @@ body.talk .field::placeholder { color: var(--dim); }
 .hint:empty { display: none; }
 .hint.err { color: var(--err); }
 
+/* ---- keyboard B · Orbit rail ---- */
+#kb { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+#kb:empty { display: none; }
+#kb .sugg { display: flex; gap: 8px; min-height: 44px; }
+#kb .sugg span { display: grid; place-items: center; height: 44px; padding: 0 20px; border-radius: 99px; font-size: 19px; }
+#kb .sugg span.on { background: var(--blue); }
+#kb .rail { display: flex; align-items: center; gap: 4px; height: 104px; padding: 0 26px; border-radius: 99px; }
+#kb .rail span { width: 30px; text-align: center; font-size: 21px; color: rgba(227, 227, 232, .5); font-family: var(--font); }
+#kb .rail span.n1 { font-size: 26px; color: rgba(227, 227, 232, .82); }
+#kb .rail span.n0 { width: 66px; height: 80px; display: grid; place-items: center; border-radius: 24px; font-size: 44px; color: #fff; background: var(--blue); box-shadow: 0 0 0 3px var(--blue-hi); }
+#kb .tabs { display: flex; gap: 8px; font-size: 16px; }
+#kb .tabs span { padding: 7px 16px; border-radius: 99px; color: var(--dim); }
+#kb .tabs span.on { background: var(--text); color: #111; }
+
 /* ---- answer cards ---- */
 #cards { display: flex; flex-direction: column; gap: 8px; }
 #cards:empty { display: none; }

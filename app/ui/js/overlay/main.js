@@ -3,6 +3,7 @@
 // live words from dictation ("stt"), answers from Gemini ("answer"), the pad while we hold it ("pad").
 
 import { createStack } from "./cards.js";
+import { attach } from "./orbit-view.js";
 
 const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
@@ -216,6 +217,7 @@ async function boot() {
   const [settings, ok] = await Promise.all([invoke("get_settings"), invoke("gemini_key_status")]);
   voice = settings.answer_voice || "Text";
   keyOk = ok;
+  attach({ box: $("kb"), field: $("field"), fit, send, keyboard });
   await document.fonts.ready;
   await listen("ov_mode", (m) => setMode(m.mode));
   ready = true;
