@@ -24,14 +24,62 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+pub fn set_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
     let before = get_settings(state.clone());
+    // Owned by the overlay (drag) and its own commands, not by a window's copy of the settings.
+    settings.overlay_pos = before.overlay_pos;
     if before.start_with_windows != settings.start_with_windows {
         autostart::set(settings.start_with_windows);
     }
     settings.save(&state.settings_path).map_err(|e| e.to_string())?;
     state.with_bridge(|b| b.update_settings(settings));
     Ok(())
+}
+
+/// Changes settings from the app side (not a window's copy) and saves them.
+pub fn update_settings(state: &AppState, f: impl FnOnce(&mut Settings)) -> Result<(), String> {
+    let Some(mut s) = state.with_bridge(|b| b.settings()) else { return Ok(()) };
+    f(&mut s);
+    s.save(&state.settings_path).map_err(|e| e.to_string())?;
+    state.with_bridge(|b| b.update_settings(s));
+    Ok(())
+}
+
+/// Settings › Reset overlay position.
+#[tauri::command]
+pub fn overlay_reset_pos(state: State<'_, AppState>) -> Result<(), String> {
+    update_settings(&state, |s| s.overlay_pos = None)
+}
+
+/// Whether a Gemini key is saved (the key itself never leaves Rust).
+#[tauri::command]
+pub fn gemini_key_status() -> bool {
+    pad_core::win::keystore::get().is_some()
+}
+
+/// Cleans, checks (one cheap request) and saves the player's key.
+#[tauri::command]
+pub async fn gemini_key_set(key: String) -> Result<(), String> {
+    let key = pad_core::win::keystore::normalize_key(&key);
+    if key.is_empty() {
+        return Err("Paste your key first".into());
+    }
+    let k = key.clone();
+    tauri::async_runtime::spawn_blocking(move || pad_core::gemini::validate_key(&k))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.message().to_string())?;
+    pad_core::win::keystore::set(&key)
+}
+
+#[tauri::command]
+pub fn gemini_key_clear() {
+    pad_core::win::keystore::clear();
+}
+
+#[tauri::command]
+pub fn gemini_open_studio() {
+    actions::shell_open("https://aistudio.google.com/apikey", None);
 }
 
 #[tauri::command]

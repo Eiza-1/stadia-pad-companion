@@ -10,6 +10,7 @@ pub mod actions;
 pub mod autostart;
 pub mod ble;
 pub mod vigem;
+pub mod overlay_win;
 pub mod speech;
 
 /// Joins the COM multithreaded apartment on the calling thread (WinRT calls and blocking `.get()`).

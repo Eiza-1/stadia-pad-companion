@@ -4,6 +4,7 @@
 //! demand and destroyed on close, so WebView2 costs nothing while you play.
 
 mod ipc;
+mod overlay;
 mod tray;
 
 use pad_core::bridge::{Bridge, BridgeEvent, BridgeHandle};
@@ -94,6 +95,9 @@ fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
                         }
                     }
                     BridgeEvent::Action(Action::OpenCompanion) => open_window(&app),
+                    BridgeEvent::Action(a @ (Action::OverlayTap | Action::TalkStart | Action::TalkEnd)) => {
+                        overlay::on_action(&app, a)
+                    }
                     BridgeEvent::Action(a) => {
                         if let Some(w) = window {
                             let _ = w.emit("action", a);
@@ -144,6 +148,18 @@ fn main() {
             ipc::window_maximize,
             ipc::window_close,
             ipc::set_live,
+            ipc::overlay_reset_pos,
+            ipc::gemini_key_status,
+            ipc::gemini_key_set,
+            ipc::gemini_key_clear,
+            ipc::gemini_open_studio,
+            overlay::overlay_ready,
+            overlay::overlay_resize,
+            overlay::overlay_ask,
+            overlay::overlay_capture,
+            overlay::overlay_close,
+            overlay::overlay_focus,
+            overlay::overlay_drag_end,
             tray::tray_action,
             tray::tray_ready,
             tray::tray_set_autostart,
@@ -159,6 +175,7 @@ fn main() {
             let (tx, rx) = mpsc::channel();
             bridge.subscribe(tx);
             app.manage(AppState { bridge: Mutex::new(Some(bridge)), settings_path });
+            app.manage(overlay::Overlay::default());
             spawn_dispatcher(app.handle().clone(), rx);
             tray::build(app.handle())?;
             if !background {
