@@ -1,6 +1,6 @@
 # Gemini overlay: design
 
-Date: 2026-11-02. Status: draft for approval.
+Date: 2026-11-02. Status: approved by the user 2026-11-02, with the two changes below (any app; exclusive fullscreen).
 
 ## Intent
 
@@ -130,11 +130,24 @@ Each player uses **their own free Gemini API key** (user's decision; the develop
 ## Non-goals
 
 - Syncing overlay conversations into the Gemini app or gemini.google.com history (impossible; handoff instead).
-- Drawing over exclusive-fullscreen games via graphics hooks or injection (anti-cheat risk). The overlay
-  covers windowed and borderless games; for exclusive fullscreen it says so once (or the builder finds a safe
-  fallback, e.g. sound + voice answers only).
 - A general automation / macro system.
 - Replacing the existing "open the Gemini app" behaviour: it stays as an option.
+
+## Where it shows (user's changes at approval)
+
+- **Over any app, not just games**: desktop, browser, anything. The Assistant button summons it wherever you are.
+- **Over exclusive-fullscreen games too** (user's request). Stage 5, after stages 1–4. A plain always-on-top
+  window can't appear over a true exclusive-fullscreen game, so this needs drawing inside the game's own
+  frames (the technique Steam, Discord and OBS use: hooking the game's present call from a loaded module).
+  Constraints on that stage:
+  - Opt-in, off by default, with a clear warning: anti-cheat systems (Vanguard, Easy Anti-Cheat, BattlEye,
+    etc.) may treat an unknown module in the game as cheating and ban the account.
+  - Never loaded into games known to use kernel anti-cheat (a maintained skip list), and no attempt to hide
+    from or evade anti-cheat: if a game refuses it, the overlay falls back.
+  - Fallback everywhere it can't draw: voice answers and the chime still work (read-aloud forced on while
+    the game is exclusive fullscreen).
+  - Many games that say "fullscreen" already run flip-model / with Windows fullscreen optimisations, where
+    the normal overlay window does show; stage 5 is only for the rest.
 
 ## Anti-goals (a failure even if it "works")
 
@@ -194,7 +207,7 @@ Each player uses **their own free Gemini API key** (user's decision; the develop
 - Upgrading users whose Assistant setting is "Gemini" move to **Gemini overlay** (the user wants everyone to
   get it); a one-time card explains it and where to switch back.
 - Build in stages, each usable on its own: (1) pill, speech-to-text, answers, key setup, keyboard B;
-  (2) PC commands; (3) Circle to Search; (4) Live voice and screen share.
+  (2) PC commands; (3) Circle to Search; (4) Live voice and screen share; (5) exclusive fullscreen (opt-in).
 
 ## Left to the builder
 
