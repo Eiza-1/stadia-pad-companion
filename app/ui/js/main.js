@@ -8,6 +8,14 @@ import { initDevice, showPage } from "./device.js";
 
 const $ = (id) => document.getElementById(id);
 
+// Live pad/stats events flow only while a configuration page is on screen: Home shows a still pad,
+// and a minimised window draws nothing, so neither costs the bridge or the PC anything.
+let liveOn = null;
+function syncLive() {
+  const on = document.body.classList.contains("inside") && !document.hidden;
+  if (on !== liveOn) invoke("set_live", { on }).then(() => (liveOn = on), () => {});
+}
+
 function goInside(inside) {
   document.body.classList.toggle("inside", inside);
   // The hidden view still sits on top of the visible one; inert stops it taking clicks and focus.
@@ -16,6 +24,7 @@ function goInside(inside) {
   // Home and the device tab only exist inside the configuration; on Home they'd do nothing.
   $("homeBtn").inert = $("devTab").inert = !inside;
   if (inside) closePops();
+  syncLive();
   window.dispatchEvent(new Event("viewchange"));
 }
 
@@ -54,7 +63,8 @@ async function boot() {
   const schedule = () => { if (!frame && !document.hidden) frame = requestAnimationFrame(draw); };
   listen("pad", (p) => { latest = p.state; lastEvent = p; schedule(); });
   window.addEventListener("viewchange", schedule);
-  document.addEventListener("visibilitychange", schedule);
+  document.addEventListener("visibilitychange", () => { syncLive(); schedule(); });
+  syncLive();
   listen("stats", (s) => !document.hidden && window.dispatchEvent(new CustomEvent("padstats", { detail: s })));
 
   // Decorative motion (drifting glow, floating pad, pulsing dot) stops whenever the window isn't the

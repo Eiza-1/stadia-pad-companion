@@ -56,7 +56,8 @@ pub fn open_window_at(app: &AppHandle, page: Option<&'static str>) {
             .build();
         match built {
             Ok(w) => {
-                handle.state::<AppState>().with_bridge(|b| b.set_live(true));
+                // Live pad/stats events start only when the UI asks (ipc::set_live: a configuration
+                // page is open and the window isn't minimised) and stop when the window goes.
                 let h = handle.clone();
                 w.on_window_event(move |e| {
                     if let WindowEvent::Destroyed = e {
@@ -137,6 +138,7 @@ fn main() {
             ipc::window_minimize,
             ipc::window_maximize,
             ipc::window_close,
+            ipc::set_live,
             tray::tray_action,
             tray::tray_ready,
             tray::tray_set_autostart,

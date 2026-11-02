@@ -39,6 +39,13 @@ pub fn get_status(state: State<'_, AppState>) -> Status {
     state.with_bridge(|b| b.status()).unwrap_or_else(|| status_for_error(&BridgeError::Io("bridge stopped".into())))
 }
 
+/// The UI turns the ~60/s live pad and stats events on only while something on screen shows them (a
+/// configuration page, window not minimised); Home and a minimised window get none.
+#[tauri::command]
+pub fn set_live(state: State<'_, AppState>, on: bool) {
+    state.with_bridge(|b| b.set_live(on));
+}
+
 #[tauri::command]
 pub fn test_rumble(state: State<'_, AppState>) {
     state.with_bridge(|b| b.test_rumble());
