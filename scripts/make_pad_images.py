@@ -71,7 +71,29 @@ def measure_box(im: Image.Image):
     fg = fg.filter(ImageFilter.MinFilter(5)).filter(ImageFilter.GaussianBlur(0.9))
     return fg.point(lambda v: 255 if v > 24 else 0).getbbox()
 
-def cut_out(im: Image.Image) -> Image.Image:
+UPSCALED = SRC / "upscaled"   # Real-ESRGAN x4plus 4x versions of the originals (see load_big)
+
+def load_big(im: Image.Image, name: str):
+    """The source at SUPER x resolution, as (for_mask, for_colour).
+
+    for_mask is a light denoise + Lanczos upscale: its white backdrop and the pad's own light surface
+    stay far enough apart for the flood fill. for_colour is the Real-ESRGAN upscale in
+    art/pads/upscaled/ when it exists (made once with realesrgan-ncnn-vulkan -n realesrgan-x4plus -s 4;
+    it recovers real edge and surface detail), else the same Lanczos image. The ESRGAN image is not used
+    for the mask: it flattens Clearly White's surface to the backdrop's white and the fill leaks in."""
+    rgb = np.array(im.convert("RGB"))
+    h, w = rgb.shape[:2]
+    rgb = cv2.fastNlMeansDenoisingColored(rgb, None, 4, 4, 5, 15)   # remove JPEG blocking, keep detail
+    lanczos = cv2.resize(rgb, (w * SUPER, h * SUPER), interpolation=cv2.INTER_LANCZOS4)
+    up = UPSCALED / (Path(name).stem + ".png")
+    if up.exists():
+        big = np.array(Image.open(up).convert("RGB"))
+        if big.shape[:2] == (h * SUPER, w * SUPER):
+            return lanczos, big
+        print(f"  {up.name}: size {big.shape[1]}x{big.shape[0]} is not {SUPER}x the source; ignoring it")
+    return lanczos, lanczos
+
+def cut_out(im: Image.Image, name: str) -> Image.Image:
     """Cuts a product photo off its white background with a smooth, anti-aliased outline.
 
     The small JPEG/WebP originals have noisy, blocky edges; a per-pixel mask follows that noise and
@@ -79,10 +101,7 @@ def cut_out(im: Image.Image) -> Image.Image:
     scale, smooth the outline as a curve (blur + re-threshold), pull it inside the white fringe, and
     let the later downsample produce the anti-aliased edge. Edge colours are taken from the pad's own
     interior, so no white halo shows on the dark UI."""
-    rgb = np.array(im.convert("RGB"))
-    rgb = cv2.fastNlMeansDenoisingColored(rgb, None, 4, 4, 5, 15)   # remove JPEG blocking, keep detail
-    h, w = rgb.shape[:2]
-    big = cv2.resize(rgb, (w * SUPER, h * SUPER), interpolation=cv2.INTER_LANCZOS4)
+    big, colour = load_big(im, name)
     H, W = big.shape[:2]
     # Background = everything connected to the border that is close to the border's white.
     ff = np.zeros((H + 2, W + 2), np.uint8)
@@ -105,7 +124,7 @@ def cut_out(im: Image.Image) -> Image.Image:
     # would let the pad grow back out to the frame.
     P = 12 * SUPER
     fg = cv2.copyMakeBorder(fg, P, P, P, P, cv2.BORDER_CONSTANT, value=0)
-    big = cv2.copyMakeBorder(big, P, P, P, P, cv2.BORDER_REPLICATE)
+    colour = cv2.copyMakeBorder(colour, P, P, P, P, cv2.BORDER_REPLICATE)
     # Keep only the pad itself (largest blob) and fill pin-holes inside it.
     n, lab, stats, _ = cv2.connectedComponentsWithStats(fg.astype(np.uint8), 8)
     if n > 1:
@@ -124,7 +143,7 @@ def cut_out(im: Image.Image) -> Image.Image:
     # Edge colour: pixels near the outline still mix in the white backdrop; replace them with the
     # average colour of the pad just inside (colour bleed), weighted by how deep inside they are.
     inner = cv2.erode(fg, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(3 * SUPER) | 1,) * 2))
-    f = big.astype(np.float32)
+    f = colour.astype(np.float32)
     acc = cv2.GaussianBlur(f * inner[..., None], (0, 0), 2.5 * SUPER)
     wgt = cv2.GaussianBlur(inner, (0, 0), 2.5 * SUPER)[..., None]
     bleed = acc / np.maximum(wgt, 1e-4)
@@ -207,7 +226,7 @@ POINTS_OUT = {}
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    imgs = {name: normalise(cut_out(Image.open(SRC / file))) for name, file in PADS.items()}
+    imgs = {name: normalise(cut_out(Image.open(SRC / file), file)) for name, file in PADS.items()}
     size = imgs[REFERENCE].size
     heights = {}
     for name, img in imgs.items():
