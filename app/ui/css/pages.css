@@ -54,12 +54,24 @@
 .note-box .ms { font-size: 18px; }
 
 /* ---------- live pad on pages ---------- */
-/* Pad photo + live overlays (pad.js). Hotspots are invisible until their control is pressed. */
-svg.pad image { filter: drop-shadow(0 18px 22px rgba(0, 0, 0, .45)); }
-svg.pad .hot { fill: transparent; stroke: transparent; stroke-width: 4; transition: fill .12s, stroke .12s; }
-svg.pad .hot.on { fill: color-mix(in srgb, var(--hi, var(--primary)) 42%, transparent); stroke: var(--hi, var(--primary)); filter: drop-shadow(0 0 10px var(--hi, var(--primary))); }
-svg.pad .thumb { fill: var(--hi, var(--primary)); stroke: #fff; stroke-width: 3; opacity: 0; transition: transform .05s linear, opacity .2s; }
-svg.pad .thumb.show { opacity: .95; }
+/* Pad photo, brought to life (pad.js): each control is a clipped piece of the photo that moves. */
+svg.pad image.base { filter: drop-shadow(0 18px 22px rgba(0, 0, 0, .45)); }
+svg.pad .part .cap { transition: transform .07s ease-out, filter .1s; }
+svg.pad .part .well rect { fill: #000; opacity: 0; transition: opacity .07s; }
+/* Pressed: the cap sinks into the shell and darkens over a shadowed well; a soft accent glow says which. */
+svg.pad .part.on .cap { transform: scale(.88); filter: brightness(.72) drop-shadow(0 0 7px color-mix(in srgb, var(--hi, var(--primary)) 75%, transparent)); }
+svg.pad .part.on .well rect { opacity: .5; }
+svg.pad .part.bumper.on .cap { transform: translateY(4px) scaleX(.97); }
+svg.pad .part.bumper .well { display: none; }
+/* D-pad arms darken in place; the well becomes an accent tint so a black D-pad still shows the press. */
+svg.pad .part.dpad .well { display: none; }
+svg.pad .part.dpad .tint rect { fill: var(--hi, var(--primary)); opacity: 0; transition: opacity .07s; }
+svg.pad .part.dpad.on .tint rect { opacity: .38; }
+svg.pad .part.dpad.on .cap { transform: none; filter: brightness(.55) saturate(1.2); }
+svg.pad .stick .move { transition: transform .04s linear; }
+svg.pad .stick .socket, svg.pad .stick .sheen { opacity: 0; transition: opacity .1s; }
+svg.pad .stick.tilt .socket, svg.pad .stick.tilt .sheen { opacity: 1; }
+svg.pad .stick .part.on .cap { transform: scale(.9); }
 svg.pad .trig .track { fill: color-mix(in srgb, var(--on-surface) 12%, transparent); transition: fill .12s; }
 svg.pad .trig .track.on { fill: color-mix(in srgb, var(--hi, var(--primary)) 30%, transparent); }
 svg.pad .trig .fill { fill: var(--hi, var(--primary)); transform: scaleX(0); transform-box: fill-box; transform-origin: left; transition: transform .05s linear; }
