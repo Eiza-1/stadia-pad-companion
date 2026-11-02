@@ -10,3 +10,12 @@ pub mod actions;
 pub mod autostart;
 pub mod ble;
 pub mod vigem;
+pub mod speech;
+
+/// Joins the COM multithreaded apartment on the calling thread (WinRT calls and blocking `.get()`).
+pub fn com_mta() {
+    use windows::Win32::System::Com::{CoInitializeEx, COINIT_MULTITHREADED};
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+    }
+}
