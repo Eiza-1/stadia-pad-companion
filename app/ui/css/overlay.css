@@ -153,6 +153,8 @@ body[data-anim="Fade"].enter #pillbox, body[data-anim="Fade"].enter .share { ani
 .card .x:hover { background: rgba(255, 255, 255, .08); color: var(--text); }
 .card .bar { position: absolute; left: 0; bottom: 0; height: 3px; width: 100%; background: var(--blue-hi); opacity: .6; transform-origin: left; transform: scaleX(0); }
 .card .speaking { display: inline-flex; align-items: center; gap: 8px; color: var(--dim); }
+.card .vnote { margin-top: 4px; font-size: 12px; color: var(--dim); }
+.card .vnote:empty { display: none; }
 
 /* ---- key setup ---- */
 .setup { padding: 18px 20px; border-radius: 22px; }
@@ -171,6 +173,5 @@ body[data-anim="Fade"].enter #pillbox, body[data-anim="Fade"].enter .share { ani
 .msg { min-height: 18px; margin: 8px 0 0 !important; font-size: 13px !important; color: var(--dim) !important; }
 .msg.err { color: var(--err) !important; }
 
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { transition-duration: .01ms !important; animation: none !important; }
-}
+/* No prefers-reduced-motion switch-off here: Settings > Gemini > Entrance animation (Glow / Simple fade /
+   Off) decides. Windows' "Animation effects" being off made the glow vanish without a word. */

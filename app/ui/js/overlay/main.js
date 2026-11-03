@@ -145,20 +145,14 @@ listen("stt", (s) => {
   $("field").scrollLeft = $("field").scrollWidth;
 });
 
-// ---------- answers ----------
-const speak = (text) => {
-  if (voice === "Text" || !("speechSynthesis" in window)) return;
-  speechSynthesis.cancel();
-  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-};
-
+// ---------- answers (Voice / Both: overlay.rs has Gemini read them aloud and tells us how long) ----------
 listen("answer", (a) => {
   if (a.question != null) stack.add(a.id, a.question);
   else if (a.delta) stack.append(a.id, a.delta);
-  else if (a.done) {
-    stack.done(a.id);
-    speak(stack.cards.find((c) => c.id === a.id)?.text || "");
-  } else if (a.error === "nokey") {
+  else if (a.done) stack.done(a.id);
+  else if (a.speaking != null) stack.speaking(a.id, a.speaking);
+  else if (a.voice_error) stack.voiceError(a.id, a.voice_error);
+  else if (a.error === "nokey") {
     stack.close(a.id);
     keyOk = false;
     invoke("overlay_show_type"); // overlay.rs takes the pad and shows the pill (with the key card)
@@ -177,22 +171,29 @@ function drawCards() {
       q.append(document.createElement("i"), c.question);
       const a = document.createElement("div");
       a.className = "a";
-      if (voice === "Voice" && !c.error && c.dueAt != null) {
-        a.innerHTML = '<span class="speaking">Speaking…</span>';
+      if (voice === "Voice" && !c.error && !c.voiceError && c.dueAt != null) {
+        a.innerHTML = `<span class="speaking">${c.voice ? "Speaking…" : "Getting the voice…"}</span>`;
       } else a.textContent = c.error || c.text;
+      const note = document.createElement("div");
+      note.className = "vnote";
+      if (c.voiceError && voice !== "Text") note.textContent = `Voice: ${c.voiceError}`;
       const x = document.createElement("button");
       x.className = "x";
       x.type = "button";
       x.setAttribute("aria-label", "Close");
       x.textContent = "×";
-      x.onclick = () => { stack.close(c.id); drawCards(); };
+      x.onclick = () => {
+        if (c.voice) invoke("overlay_hush");
+        stack.close(c.id);
+        drawCards();
+      };
       const bar = document.createElement("div");
       bar.className = "bar";
       if (c.dueAt != null) {
         const left = Math.max(0, c.dueAt - Date.now());
         bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: left, fill: "forwards" });
       }
-      el.append(q, a, x, bar);
+      el.append(q, a, note, x, bar);
       return el;
     }),
   );
@@ -208,8 +209,7 @@ function idleCheck() {
   if (mode === "hidden" && stack.cards.length === 0) idleTimer = setTimeout(close, 20000);
 }
 function close() {
-  speechSynthesis?.cancel();
-  invoke("overlay_close");
+  invoke("overlay_close"); // overlay.rs stops the voice too
 }
 
 // ---------- key setup ----------

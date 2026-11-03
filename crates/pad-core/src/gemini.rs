@@ -5,9 +5,10 @@ use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
 use std::time::Duration;
 
-/// The model ids live only here. `LITE` is the fallback when Flash is busy or its free limit is hit.
-pub const MODEL: &str = "gemini-flash-latest";
-pub const LITE: &str = "gemini-flash-lite-latest";
+/// The model ids live only here. Flash-Lite answers first: it is fast (about 1 s) and short overlay
+/// answers don't need more; Flash is the fallback when Flash-Lite is busy or its free limit is hit.
+pub const MODEL: &str = "gemini-flash-lite-latest";
+pub const FALLBACK: &str = "gemini-flash-latest";
 const API: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
 pub const SYSTEM: &str = "You are a gaming assistant shown in a small overlay over a game. Answer in one to three short sentences; use a compact list only for combos or steps. No preamble.";
@@ -66,13 +67,13 @@ pub struct Attempt {
 
 /// What to try after `a` failed with `status`, or `None` to give up and show the error.
 /// The free tier refuses Search grounding with a 429 (or a 400 naming google_search), so that drops
-/// grounding first; a busy or rate-limited Flash then falls back to Flash-Lite.
+/// grounding first; a busy or rate-limited Flash-Lite then falls back to Flash.
 pub fn next_attempt(a: Attempt, status: u16, body: &str) -> Option<Attempt> {
     if a.grounded && (status == 429 || grounding_unsupported(status, body)) {
         return Some(Attempt { grounded: false, ..a });
     }
     if a.model == MODEL && matches!(status, 429 | 500 | 502 | 503 | 504) {
-        return Some(Attempt { model: LITE, ..a });
+        return Some(Attempt { model: FALLBACK, ..a });
     }
     None
 }
@@ -106,7 +107,7 @@ pub fn parse_sse_line(line: &str) -> Option<String> {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(8)).timeout_read(Duration::from_secs(20)).build()
+    ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(8)).timeout_read(Duration::from_secs(12)).build()
 }
 
 fn http_error(e: ureq::Error) -> (Option<u16>, String) {
@@ -169,6 +170,109 @@ pub fn validate_key(key: &str) -> Result<(), AskError> {
         .map_err(|e| { let (c, b) = http_error(e); classify(c, &b) })
 }
 
+// ---------- read-aloud: Gemini's own natural voices ----------
+
+/// Speech models: Flash-Lite TTS is quicker (about 3 s for a sentence); Flash TTS backs it up.
+pub const TTS: &str = "gemini-3.8-flash-lite-tts";
+pub const TTS_FALLBACK: &str = "gemini-3.8-flash-tts";
+/// Gemini's prebuilt voices offered in Settings (name, how Google describes it).
+pub const VOICES: [(&str, &str); 6] =
+    [("Aoede", "Breezy"), ("Kore", "Firm"), ("Puck", "Upbeat"), ("Charon", "Informative"), ("Leda", "Youthful"), ("Fenrir", "Excitable")];
+
+/// Only the answer goes in: a style line in front is read aloud too (measured: +5 s of speech).
+pub fn tts_body(text: &str, voice: &str) -> Value {
+    json!({
+        "contents": [{ "parts": [{ "text": text }] }],
+        "generationConfig": {
+            "responseModalities": ["AUDIO"],
+            "speechConfig": { "voiceConfig": { "prebuiltVoiceConfig": { "voiceName": voice } } }
+        }
+    })
+}
+
+/// The next speech model after `model` failed with `status`, if any.
+pub fn next_tts(model: &str, status: u16) -> Option<&'static str> {
+    (model == TTS && matches!(status, 429 | 500 | 502 | 503 | 504)).then_some(TTS_FALLBACK)
+}
+
+/// WAV bytes from a speech reply (raw `audio/L16` PCM is wrapped in a WAV header).
+pub fn parse_tts(body: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let v: Value = serde_json::from_str(body).ok()?;
+    let d = &v["candidates"][0]["content"]["parts"][0]["inlineData"];
+    let bytes = base64::engine::general_purpose::STANDARD.decode(d["data"].as_str()?).ok()?;
+    let mime = d["mimeType"].as_str().unwrap_or("");
+    if mime.starts_with("audio/L16") || mime.contains("pcm") {
+        let rate = mime.split(';').find_map(|p| p.trim().strip_prefix("rate=")?.parse().ok()).unwrap_or(24_000);
+        Some(pcm_to_wav(&bytes, rate))
+    } else {
+        Some(bytes)
+    }
+}
+
+/// 16-bit mono PCM to a WAV file.
+pub fn pcm_to_wav(pcm: &[u8], rate: u32) -> Vec<u8> {
+    let mut w = Vec::with_capacity(44 + pcm.len());
+    w.extend_from_slice(b"RIFF");
+    w.extend_from_slice(&(36 + pcm.len() as u32).to_le_bytes());
+    w.extend_from_slice(b"WAVEfmt ");
+    w.extend_from_slice(&16u32.to_le_bytes());
+    w.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    w.extend_from_slice(&1u16.to_le_bytes()); // mono
+    w.extend_from_slice(&rate.to_le_bytes());
+    w.extend_from_slice(&(rate * 2).to_le_bytes());
+    w.extend_from_slice(&2u16.to_le_bytes());
+    w.extend_from_slice(&16u16.to_le_bytes());
+    w.extend_from_slice(b"data");
+    w.extend_from_slice(&(pcm.len() as u32).to_le_bytes());
+    w.extend_from_slice(pcm);
+    w
+}
+
+/// Playing time of a WAV file, from its `fmt ` byte rate and `data` size.
+pub fn wav_duration_ms(wav: &[u8]) -> Option<u64> {
+    if wav.len() < 12 || &wav[..4] != b"RIFF" || &wav[8..12] != b"WAVE" {
+        return None;
+    }
+    let (mut i, mut byte_rate, mut data) = (12usize, None, None);
+    while i + 8 <= wav.len() {
+        let id = &wav[i..i + 4];
+        let size = u32::from_le_bytes(wav[i + 4..i + 8].try_into().ok()?) as usize;
+        if id == b"fmt " && i + 16 <= wav.len() {
+            byte_rate = Some(u32::from_le_bytes(wav.get(i + 16..i + 20)?.try_into().ok()?) as u64);
+        }
+        if id == b"data" {
+            data = Some(size.min(wav.len() - (i + 8)) as u64);
+            break;
+        }
+        i += 8 + size + (size & 1);
+    }
+    let (r, d) = (byte_rate.filter(|r| *r > 0)?, data?);
+    Some(d * 1000 / r)
+}
+
+/// Gemini reads `text` aloud in `voice`; returns a WAV file.
+pub fn speak(key: &str, text: &str, voice: &str) -> Result<Vec<u8>, AskError> {
+    let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(8)).timeout_read(Duration::from_secs(30)).build();
+    let mut model = TTS;
+    loop {
+        let url = format!("{API}/{model}:generateContent");
+        match agent.post(&url).set("x-goog-api-key", key).send_json(tts_body(text, voice)) {
+            Ok(r) => {
+                let body = r.into_string().map_err(|_| AskError::Offline)?;
+                return parse_tts(&body).ok_or_else(|| AskError::Other("no audio in reply".into()));
+            }
+            Err(e) => {
+                let (c, b) = http_error(e);
+                match c.and_then(|c| next_tts(model, c)) {
+                    Some(next) => model = next,
+                    None => return Err(classify(c, &b)),
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,6 +314,13 @@ mod tests {
     }
 
     #[test]
+    fn the_fast_model_answers_first() {
+        // Measured 2026-11-03 on a free key: Flash-Lite answers in about 1 s; Flash was busy or hung.
+        assert_eq!(MODEL, "gemini-flash-lite-latest");
+        assert_eq!(FALLBACK, "gemini-flash-latest");
+    }
+
+    #[test]
     fn refused_search_retries_the_same_model_without_it() {
         let a = Attempt { model: MODEL, grounded: true };
         assert_eq!(next_attempt(a, 429, "RESOURCE_EXHAUSTED"), Some(Attempt { model: MODEL, grounded: false }));
@@ -217,17 +328,17 @@ mod tests {
     }
 
     #[test]
-    fn busy_or_limited_flash_falls_back_to_lite() {
+    fn busy_or_limited_model_falls_back() {
         let a = Attempt { model: MODEL, grounded: false };
-        assert_eq!(next_attempt(a, 503, "UNAVAILABLE"), Some(Attempt { model: LITE, grounded: false }));
-        assert_eq!(next_attempt(a, 429, ""), Some(Attempt { model: LITE, grounded: false }));
+        assert_eq!(next_attempt(a, 503, "UNAVAILABLE"), Some(Attempt { model: FALLBACK, grounded: false }));
+        assert_eq!(next_attempt(a, 429, ""), Some(Attempt { model: FALLBACK, grounded: false }));
         let g = Attempt { model: MODEL, grounded: true };
-        assert_eq!(next_attempt(g, 503, ""), Some(Attempt { model: LITE, grounded: true }));
+        assert_eq!(next_attempt(g, 503, ""), Some(Attempt { model: FALLBACK, grounded: true }));
     }
 
     #[test]
-    fn lite_failures_and_real_errors_stop() {
-        let l = Attempt { model: LITE, grounded: false };
+    fn fallback_failures_and_real_errors_stop() {
+        let l = Attempt { model: FALLBACK, grounded: false };
         assert_eq!(next_attempt(l, 429, ""), None);
         assert_eq!(next_attempt(l, 503, ""), None);
         assert_eq!(next_attempt(Attempt { model: MODEL, grounded: true }, 403, ""), None);
@@ -245,5 +356,45 @@ mod tests {
     fn busy_has_its_own_message() {
         assert!(matches!(classify(Some(503), ""), AskError::Busy));
         assert_eq!(AskError::Busy.message(), "Gemini is busy right now. Try again in a moment");
+    }
+
+    #[test]
+    fn tts_body_asks_for_audio_in_the_chosen_voice() {
+        let b = tts_body("Back, Forward + 1", "Aoede");
+        assert_eq!(b["generationConfig"]["responseModalities"][0], "AUDIO");
+        assert_eq!(b["generationConfig"]["speechConfig"]["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"], "Aoede");
+        assert_eq!(b["contents"][0]["parts"][0]["text"], "Back, Forward + 1", "nothing else, or it is spoken too");
+    }
+
+    #[test]
+    fn tts_reply_gives_wav_bytes() {
+        use base64::Engine;
+        let wav = b"RIFF....WAVEfmt ".to_vec();
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&wav);
+        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"inlineData":{{"mimeType":"audio/wav","data":"{b64}"}}}}]}}}}]}}"#);
+        assert_eq!(parse_tts(&body), Some(wav));
+        // raw 24 kHz PCM is wrapped in a WAV header
+        let pcm = base64::engine::general_purpose::STANDARD.encode([1u8, 0, 2, 0]);
+        let body = format!(r#"{{"candidates":[{{"content":{{"parts":[{{"inlineData":{{"mimeType":"audio/L16;codec=pcm;rate=24000","data":"{pcm}"}}}}]}}}}]}}"#);
+        let out = parse_tts(&body).unwrap();
+        assert_eq!(&out[..4], b"RIFF");
+        assert_eq!(&out[out.len() - 4..], &[1, 0, 2, 0]);
+        assert_eq!(wav_duration_ms(&out), Some(0));
+        assert_eq!(parse_tts("{}"), None);
+    }
+
+    #[test]
+    fn wav_length_is_read_from_its_header() {
+        let wav = pcm_to_wav(&vec![0u8; 48_000], 24_000); // 1 s of 16-bit mono at 24 kHz
+        assert_eq!(wav_duration_ms(&wav), Some(1000));
+        assert_eq!(wav_duration_ms(b"nope"), None);
+    }
+
+    #[test]
+    fn busy_voice_model_falls_back_once() {
+        assert_eq!(next_tts(TTS, 503), Some(TTS_FALLBACK));
+        assert_eq!(next_tts(TTS, 429), Some(TTS_FALLBACK));
+        assert_eq!(next_tts(TTS_FALLBACK, 503), None);
+        assert_eq!(next_tts(TTS, 403), None);
     }
 }

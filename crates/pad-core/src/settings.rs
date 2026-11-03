@@ -57,6 +57,8 @@ pub enum OverlayAnim {
     Off,
 }
 
+pub const DEFAULT_VOICE: &str = "Aoede";
+
 fn not_migrated() -> bool {
     false
 }
@@ -195,6 +197,8 @@ pub struct Settings {
     /// Pill size: 1.0 = Standard (600 x 64 px), kept within 0.7..=1.4.
     pub overlay_scale: f32,
     pub overlay_anim: OverlayAnim,
+    /// Gemini voice that reads answers aloud (one of `gemini::VOICES`).
+    pub voice: String,
 }
 
 impl Default for Settings {
@@ -217,6 +221,7 @@ impl Default for Settings {
             overlay_hotkey: Some(crate::hotkey::Hotkey::default()),
             overlay_scale: 1.0,
             overlay_anim: OverlayAnim::Glow,
+            voice: DEFAULT_VOICE.into(),
         }
     }
 }
@@ -248,6 +253,9 @@ impl Settings {
 
     fn normalize(&mut self) {
         self.overlay_scale = Self::clamp_scale(self.overlay_scale);
+        if !crate::gemini::VOICES.iter().any(|(v, _)| *v == self.voice) {
+            self.voice = DEFAULT_VOICE.into();
+        }
         if !self.overlay_migrated {
             if self.assistant == AssistantAction::Gemini {
                 self.assistant = AssistantAction::Overlay;
@@ -386,5 +394,14 @@ mod tests {
         let s = Settings::load(&p);
         assert_eq!(s.overlay_scale, 1.4);
         assert_eq!(s.overlay_anim, OverlayAnim::Fade);
+    }
+
+    #[test]
+    fn read_aloud_uses_a_known_gemini_voice() {
+        assert_eq!(Settings::default().voice, "Aoede");
+        let p = write_tmp(r#"{"voice":"Robot9000"}"#);
+        assert_eq!(Settings::load(&p).voice, "Aoede", "an unknown voice goes back to the default");
+        let p = write_tmp(r#"{"voice":"Puck"}"#);
+        assert_eq!(Settings::load(&p).voice, "Puck");
     }
 }

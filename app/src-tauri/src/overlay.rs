@@ -201,7 +201,8 @@ impl OverlayState {
 
 use crate::AppState;
 use pad_core::gemini::{self, Turn};
-use pad_core::win::{keystore, overlay_win, speech::Dictation, speech::SpeechEvent};
+use pad_core::settings::AnswerVoice;
+use pad_core::win::{keystore, overlay_win, sound, speech::Dictation, speech::SpeechEvent};
 use serde_json::json;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -395,6 +396,7 @@ fn closed(app: &AppHandle) {
     let o = ov(app);
     lk(&o.state).on_closed();
     lk(&o.history).clear();
+    sound::stop();
     if let Some(d) = lk(&o.listening).take() {
         std::thread::spawn(move || drop(d.stop()));
     }
@@ -405,6 +407,7 @@ fn closed(app: &AppHandle) {
 fn ask(app: &AppHandle, text: String) {
     let o = ov(app);
     lk(&o.state).on_sent();
+    sound::stop(); // a new question cuts off the last answer's voice
     capture(app, false);
     emit(app, "ov_mode", json!({ "mode": "hidden" }));
     let id = {
@@ -427,8 +430,9 @@ fn ask(app: &AppHandle, text: String) {
         };
         match gemini::ask_stream(&key, &history, |d| emit(&h, "answer", json!({ "id": id, "delta": d }))) {
             Ok(full) => {
-                lk(&ov(&h).history).push(Turn { user: false, text: full });
+                lk(&ov(&h).history).push(Turn { user: false, text: full.clone() });
                 emit(&h, "answer", json!({ "id": id, "done": true }));
+                read_aloud(&h, id, &key, &full);
             }
             Err(e) => {
                 pad_core::log!("gemini: {e:?}");
@@ -440,7 +444,54 @@ fn ask(app: &AppHandle, text: String) {
     });
 }
 
+/// Voice or Both: Gemini reads the answer in the chosen voice. The card learns how long it will speak
+/// (so it stays up), or that the voice failed (so Voice-only shows the text instead).
+fn read_aloud(app: &AppHandle, id: u64, key: &str, text: &str) {
+    let s = app.state::<AppState>().with_bridge(|b| b.settings()).unwrap_or_default();
+    if s.answer_voice == AnswerVoice::Text {
+        return;
+    }
+    match gemini::speak(key, text, &s.voice) {
+        Ok(wav) => {
+            let ms = gemini::wav_duration_ms(&wav).unwrap_or(0);
+            if sound::play(wav) {
+                emit(app, "answer", json!({ "id": id, "speaking": ms }));
+            } else {
+                emit(app, "answer", json!({ "id": id, "voice_error": "Couldn't play the voice" }));
+            }
+        }
+        Err(e) => {
+            pad_core::log!("gemini voice: {e:?}");
+            emit(app, "answer", json!({ "id": id, "voice_error": e.message() }));
+        }
+    }
+}
+
 // ---- commands called by overlay.js ----
+
+/// A card was closed while it was being read: stop the voice.
+#[tauri::command]
+pub fn overlay_hush() {
+    sound::stop();
+}
+
+/// Settings › Gemini › Voice: Gemini's voices (name, description).
+#[tauri::command]
+pub fn gemini_voices() -> Vec<(&'static str, &'static str)> {
+    gemini::VOICES.to_vec()
+}
+
+/// Settings › Gemini › Voice › Play: a short sample in `voice` (it uses the key's free quota).
+#[tauri::command]
+pub async fn gemini_voice_sample(voice: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = keystore::get().ok_or("Add your Gemini key first")?;
+        let wav = gemini::speak(&key, "Hi! This is how I'll read your answers in game.", &voice).map_err(|e| e.message().to_string())?;
+        sound::play(wav).then_some(()).ok_or_else(|| "Couldn't play the voice".to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
 fn set_width(app: &AppHandle, width: Option<f64>) {
     if let Some(w) = width.filter(|w| w.is_finite() && *w >= 200.0 && *w <= 2000.0) {

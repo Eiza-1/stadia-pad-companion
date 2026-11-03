@@ -10,6 +10,8 @@ export function fadeMs(text) {
 }
 
 const ERROR_MS = 6000;
+/** A read-aloud card stays this long after its voice ends. */
+const AFTER_VOICE_MS = 1500;
 
 export function createStack({ max = 3, now = () => Date.now() } = {}) {
   const cards = [];
@@ -19,7 +21,7 @@ export function createStack({ max = 3, now = () => Date.now() } = {}) {
   return {
     cards,
     add(id, question) {
-      cards.push({ id, question, text: "", error: null, dueAt: null, old: false });
+      cards.push({ id, question, text: "", error: null, dueAt: null, old: false, voice: false, voiceError: null });
       while (cards.length > max) cards.shift();
       mark();
     },
@@ -30,6 +32,18 @@ export function createStack({ max = 3, now = () => Date.now() } = {}) {
     done(id) {
       const c = find(id);
       if (c) c.dueAt = now() + fadeMs(c.text);
+    },
+    /** Gemini's voice started reading card `id` for `ms`: it stays at least until the voice ends. */
+    speaking(id, ms) {
+      const c = find(id);
+      if (!c) return;
+      c.voice = true;
+      c.dueAt = Math.max(c.dueAt ?? 0, now() + ms + AFTER_VOICE_MS);
+    },
+    /** The voice failed: the card shows its text after all, with this note. */
+    voiceError(id, msg) {
+      const c = find(id);
+      if (c) c.voiceError = msg;
     },
     error(id, msg) {
       const c = find(id);

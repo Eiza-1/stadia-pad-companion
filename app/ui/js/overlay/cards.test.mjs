@@ -52,3 +52,29 @@ test("updates for unknown ids are ignored", () => {
   s.done(9);
   assert.equal(s.cards.length, 0);
 });
+
+test("a card being read aloud stays until the voice ends", () => {
+  let t = 0;
+  const s = createStack({ now: () => t });
+  s.add(1, "q");
+  s.append(1, "short");
+  s.done(1);
+  s.speaking(1, 30000);
+  t = 29000;
+  assert.deepEqual(s.expire(), [], "still speaking");
+  t = 32000;
+  assert.deepEqual(s.expire(), [1]);
+});
+
+test("speaking never shortens a card, and a failed voice is remembered", () => {
+  let t = 0;
+  const s = createStack({ now: () => t });
+  s.add(1, "q");
+  s.append(1, "word ".repeat(100));
+  s.done(1);
+  const due = s.cards[0].dueAt;
+  s.speaking(1, 10);
+  assert.equal(s.cards[0].dueAt, due);
+  s.voiceError(1, "Gemini is busy right now. Try again in a moment");
+  assert.equal(s.cards[0].voiceError, "Gemini is busy right now. Try again in a moment");
+});

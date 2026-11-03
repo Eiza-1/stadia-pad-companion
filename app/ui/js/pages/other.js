@@ -4,7 +4,7 @@
 import { settings, status, save, onSettings, onStatus, invoke, appInfo } from "../ipc.js";
 import { h, toggle, panel, seg, slider } from "../ui.js";
 
-let start, hide, kv, voiceSeg, sizeSlider, sizeSeg, animSeg;
+let start, hide, kv, voiceSeg, voicePick, sizeSlider, sizeSeg, animSeg;
 const SIZES = [{ value: 82, label: "Compact" }, { value: 100, label: "Standard" }, { value: 120, label: "Large" }];
 const pct = () => Math.round((settings.overlay_scale ?? 1) * 100);
 const quick = (p) => (SIZES.some((o) => o.value === p) ? p : null);
@@ -33,6 +33,7 @@ export function init(el) {
     start.set(settings.start_with_windows);
     hide.set(settings.hide_from_games);
     voiceSeg.set(settings.answer_voice);
+    voicePick?.set(settings.voice);
     sizeSlider.set(pct());
     sizeSeg.set(quick(pct()));
     animSeg.set(settings.overlay_anim || "Glow");
@@ -90,6 +91,22 @@ function geminiPanel() {
     settings.answer_voice, (v) => save((s) => (s.answer_voice = v)));
   voiceRow.append(voiceSeg);
 
+  // Gemini's own voices read answers aloud (Voice / Both); Play tries one with a short sample.
+  const speakRow = h(`<div class="srow col"><span class="stext"><b>Voice</b><small>Gemini's own natural voices read the answers. Each read-aloud uses your free key, so a busy day can run out.</small></span></div>`);
+  const sample = h(`<button class="btn tonal" style="margin-top:12px"><span class="ms">play_arrow</span>Play a sample</button>`);
+  sample.onclick = async () => {
+    sample.disabled = true;
+    say("Getting a sample from Gemini…");
+    try { await invoke("gemini_voice_sample", { voice: settings.voice || "Aoede" }); say(""); }
+    catch (e) { say(String(e), true); }
+    sample.disabled = false;
+  };
+  invoke("gemini_voices").then((list) => {
+    voicePick = seg(list.map(([v, d]) => ({ value: v, label: v, title: d })), settings.voice || "Aoede", (v) => save((s) => (s.voice = v)));
+    voicePick.classList.add("wrap", "compact");
+    speakRow.append(voicePick, sample);
+  });
+
   // Pill size: an open overlay resizes as the slider moves (set_settings tells it).
   const sizeRow = h(`<div class="srow col"><span class="stext"><b>Pill size</b><small>Standard is 600 × 64 px on a 1080p screen. The keyboard and answers follow it.</small></span></div>`);
   const setSize = (p) => save((s) => (s.overlay_scale = p / 100));
@@ -105,7 +122,7 @@ function geminiPanel() {
   const posRow = h(`<div class="srow"><span class="stext"><b>Overlay position</b><small>Drag the pill by its handle to move it. This puts it back at the bottom centre.</small></span><button class="btn text">Reset</button></div>`);
   posRow.querySelector("button").onclick = () => invoke("overlay_reset_pos").then(() => say("The overlay opens at the bottom centre again."));
 
-  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, sizeRow, animRow, posRow);
+  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, speakRow, sizeRow, animRow, posRow);
   render();
   return g;
 }

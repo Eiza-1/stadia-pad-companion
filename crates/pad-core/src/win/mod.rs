@@ -13,6 +13,7 @@ pub mod ble;
 pub mod vigem;
 pub mod overlay_win;
 pub mod speech;
+pub mod sound;
 
 /// Joins the COM multithreaded apartment on the calling thread (WinRT calls and blocking `.get()`).
 pub fn com_mta() {
