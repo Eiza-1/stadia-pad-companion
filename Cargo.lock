@@ -2391,6 +2391,7 @@ dependencies = [
 name = "pad-core"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "bitflags 2.13.2",
  "ctrlc",
  "serde",
