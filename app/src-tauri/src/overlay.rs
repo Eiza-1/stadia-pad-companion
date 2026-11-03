@@ -77,7 +77,8 @@ impl OverlayState {
                 self.shown = None;
                 vec![Cmd::Hide, Cmd::Capture(false)]
             }
-            Action::OverlayTap => {
+            // Until Gemini Live lands (plan 2026-11-03, Task 7), a double-tap opens typing like a tap.
+            Action::OverlayTap | Action::LiveStart => {
                 let mut out = self.open_or_show(Mode::Type);
                 if !out.is_empty() {
                     out.push(Cmd::Capture(true));
@@ -710,5 +711,11 @@ mod tests {
         s.on_window_ready();
         s.on_closed();
         assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Open, Cmd::Capture(true)]);
+    }
+
+    #[test]
+    fn double_tap_opens_typing_until_live_exists() {
+        let mut s = OverlayState::default();
+        assert_eq!(s.on_action(Action::LiveStart), vec![Cmd::Open, Cmd::Capture(true)]);
     }
 }

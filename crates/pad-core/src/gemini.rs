@@ -11,7 +11,7 @@ pub const MODEL: &str = "gemini-flash-lite-latest";
 pub const FALLBACK: &str = "gemini-flash-latest";
 const API: &str = "https://generativelanguage.googleapis.com/v1beta/models";
 
-pub const SYSTEM: &str = "You are a gaming assistant shown in a small overlay over a game. Answer in one to three short sentences; use a compact list only for combos or steps. No preamble.";
+pub const SYSTEM: &str = "You are a gaming assistant shown in a small overlay over a game. Answer in one to three short sentences; use a compact list only for combos or steps. No preamble. The overlay itself opens apps and controls music and volume when asked in a few words; if you are asked to do that, reply only: Say \"open\" and the app's name, like \"open Spotify\", or \"pause music\" or \"volume up\".";
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Turn {
