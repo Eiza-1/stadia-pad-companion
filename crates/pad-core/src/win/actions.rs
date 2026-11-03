@@ -305,7 +305,7 @@ pub fn run(action: Action) {
             }
         }
         // Handled by the app (window / overlay), not here.
-        Action::OpenCompanion | Action::OverlayTap | Action::TalkStart | Action::TalkEnd => {}
+        Action::OpenCompanion | Action::OverlayTap | Action::TalkStart | Action::TalkEnd | Action::LiveStart => {}
     }
 }
 

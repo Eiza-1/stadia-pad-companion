@@ -98,7 +98,7 @@ fn spawn_dispatcher(app: AppHandle, rx: mpsc::Receiver<BridgeEvent>) {
                         }
                     }
                     BridgeEvent::Action(Action::OpenCompanion) => open_window(&app),
-                    BridgeEvent::Action(a @ (Action::OverlayTap | Action::TalkStart | Action::TalkEnd)) => {
+                    BridgeEvent::Action(a @ (Action::OverlayTap | Action::TalkStart | Action::TalkEnd | Action::LiveStart)) => {
                         overlay::on_action(&app, a)
                     }
                     BridgeEvent::Action(a) => {

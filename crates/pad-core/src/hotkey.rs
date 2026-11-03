@@ -82,34 +82,31 @@ pub fn label(h: &Hotkey) -> String {
     parts.join(" + ")
 }
 
-/// Tap vs hold for the shortcut: Windows reports only the press, so the caller polls the key while it
-/// is held and feeds `still_down`.
+/// Tap, double-tap and hold for the shortcut: Windows reports only the press, so the caller polls the
+/// key while `active()` (held, or within the double-tap wait after a release) and feeds `still_down`.
 #[derive(Default)]
 pub struct KeyHold {
     tap: TapHold,
-    active: bool,
 }
 
 impl KeyHold {
+    /// Windows reported the shortcut. During the double-tap wait the poll sees the second press itself.
     pub fn pressed(&mut self, now_ms: u64) {
-        self.active = true;
-        self.tap.clear();
-        self.tap.update(true, now_ms);
+        if !self.tap.busy() {
+            self.tap.update(true, now_ms);
+        }
     }
 
     pub fn poll(&mut self, now_ms: u64, still_down: bool) -> Option<Action> {
-        if !self.active {
+        if !self.tap.busy() {
             return None;
-        }
-        if !still_down {
-            self.active = false;
         }
         self.tap.update(still_down, now_ms)
     }
 
-    /// Still waiting for the release.
+    /// Still watching the key (held, or waiting for a possible second tap).
     pub fn active(&self) -> bool {
-        self.active
+        self.tap.busy()
     }
 }
 
@@ -154,7 +151,8 @@ mod tests {
     fn key_hold_taps_and_talks_like_the_button() {
         let mut h = KeyHold::default();
         h.pressed(0);
-        assert_eq!(h.poll(120, false), Some(Action::OverlayTap));
+        assert_eq!(h.poll(120, false), None, "waits for a possible second tap");
+        assert_eq!(h.poll(420, false), Some(Action::OverlayTap));
         h.pressed(1000);
         assert_eq!(h.poll(1200, true), None);
         assert_eq!(h.poll(1300, true), Some(Action::TalkStart));
@@ -171,5 +169,22 @@ mod tests {
         assert_eq!(back.overlay_hotkey, None);
         let old: crate::settings::Settings = serde_json::from_str("{}").unwrap();
         assert_eq!(old.overlay_hotkey, Some(Hotkey::default()), "old files get the default");
+    }
+
+    #[test]
+    fn key_double_tap_starts_live() {
+        let mut h = KeyHold::default();
+        h.pressed(0);
+        assert_eq!(h.poll(100, false), None);
+        assert!(h.active(), "still watching for a second tap");
+        assert_eq!(h.poll(200, true), Some(Action::LiveStart));
+        assert_eq!(h.poll(260, false), None);
+        assert!(!h.active());
+        // A second WM_HOTKEY during the wait counts the same way.
+        let mut h = KeyHold::default();
+        h.pressed(0);
+        h.poll(100, false);
+        h.pressed(200);
+        assert_eq!(h.poll(210, true), Some(Action::LiveStart));
     }
 }

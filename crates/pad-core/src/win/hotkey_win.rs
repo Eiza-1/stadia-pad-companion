@@ -12,7 +12,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     MOD_WIN,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetMessageW, PeekMessageW, PostThreadMessageW, MSG, PM_NOREMOVE, WM_APP, WM_HOTKEY, WM_QUIT, WM_USER,
+    GetMessageW, PeekMessageW, PostThreadMessageW, MSG, PM_NOREMOVE, PM_REMOVE, WM_APP, WM_HOTKEY, WM_QUIT, WM_USER,
 };
 
 const WM_SET: u32 = WM_APP + 1;
@@ -79,7 +79,7 @@ impl HotkeyThread {
                         let Some(h) = current else { continue };
                         let mut hold = KeyHold::default();
                         hold.pressed(ms());
-                        // Only now, and only until release, is the key looked at.
+                        // Only now, and only until release plus the double-tap wait, is the key looked at.
                         while hold.active() {
                             std::thread::sleep(POLL);
                             let down = unsafe { GetAsyncKeyState(h.vk as i32) } < 0;
@@ -87,6 +87,10 @@ impl HotkeyThread {
                                 on(a);
                             }
                         }
+                        // A second press during the wait was already seen above; drop its own WM_HOTKEY
+                        // so it doesn't start a new tap.
+                        let mut stale = MSG::default();
+                        while unsafe { PeekMessageW(&mut stale, None, WM_HOTKEY, WM_HOTKEY, PM_REMOVE) }.as_bool() {}
                     }
                     _ => {}
                 }

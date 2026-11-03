@@ -7,6 +7,9 @@ pub const CAPTURE_HOLD_MS: u64 = 500;
 pub const STADIA_HOLD_MS: u64 = 1000;
 /// Assistant (and the overlay keyboard shortcut): held this long = talk, shorter = tap.
 pub const ASSIST_HOLD_MS: u64 = 300;
+/// A second press this soon after a tap's release is a double-tap (Gemini Live); a lone tap is reported
+/// once this has passed.
+pub const DOUBLE_TAP_MS: u64 = 300;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, serde::Serialize)]
 pub enum Action {
@@ -20,42 +23,75 @@ pub enum Action {
     TalkStart,
     /// Overlay: Assistant released after TalkStart: stop listening and send.
     TalkEnd,
+    /// Overlay: Assistant double-tapped: start Gemini Live.
+    LiveStart,
 }
 
-/// Tap vs hold-to-talk for one button or key, driven by timestamps (ms).
+/// Tap, double-tap and hold-to-talk for one button or key, driven by timestamps (ms). A tap is
+/// reported DOUBLE_TAP_MS after its release unless a second press comes first (LiveStart, at once).
 #[derive(Default, Clone, Copy)]
 pub struct TapHold {
     hold: Option<Hold>,
+    /// A tap's release time, while waiting to see if a second press follows.
+    tap_at: Option<u64>,
+    /// The second press of a double-tap is still down: its release means nothing.
+    swallow: bool,
 }
 
 impl TapHold {
-    /// Feeds the button's current state; returns OverlayTap, TalkStart or TalkEnd when one happens.
+    /// Feeds the button's current state; returns OverlayTap, TalkStart, TalkEnd or LiveStart.
     pub fn update(&mut self, down: bool, now_ms: u64) -> Option<Action> {
+        let tap_due = self.tap_at.is_some_and(|t| now_ms >= t + DOUBLE_TAP_MS);
         match (down, &mut self.hold) {
+            (true, None) if self.swallow => None,
             (true, None) => {
+                if self.tap_at.take().is_some() && !tap_due {
+                    self.swallow = true;
+                    return Some(Action::LiveStart);
+                }
                 self.hold = Some(Hold { since: now_ms, fired: false });
-                None
+                tap_due.then_some(Action::OverlayTap) // a late report: the old tap still counts
             }
             (true, Some(h)) => (!h.fired && now_ms.saturating_sub(h.since) >= ASSIST_HOLD_MS).then(|| {
                 h.fired = true;
                 Action::TalkStart
             }),
             (false, Some(h)) => {
-                let a = if h.fired { Action::TalkEnd } else { Action::OverlayTap };
+                let fired = h.fired;
                 self.hold = None;
-                Some(a)
+                if fired {
+                    Some(Action::TalkEnd)
+                } else {
+                    self.tap_at = Some(now_ms);
+                    None
+                }
+            }
+            (false, None) if self.swallow => {
+                self.swallow = false;
+                None
+            }
+            (false, None) if tap_due => {
+                self.tap_at = None;
+                Some(Action::OverlayTap)
             }
             (false, None) => None,
         }
     }
 
-    /// When a pending press becomes a hold, if it hasn't yet.
+    /// When something is next due: a pending press becoming a hold, or a waiting tap being reported.
     pub fn deadline(&self) -> Option<u64> {
-        self.hold.filter(|h| !h.fired).map(|h| h.since + ASSIST_HOLD_MS)
+        let hold = self.hold.filter(|h| !h.fired).map(|h| h.since + ASSIST_HOLD_MS);
+        let tap = self.tap_at.map(|t| t + DOUBLE_TAP_MS);
+        hold.into_iter().chain(tap).min()
+    }
+
+    /// A press, a hold or a waiting tap is in progress.
+    pub fn busy(&self) -> bool {
+        self.hold.is_some() || self.tap_at.is_some() || self.swallow
     }
 
     pub fn clear(&mut self) {
-        self.hold = None;
+        *self = TapHold::default();
     }
 }
 
@@ -203,7 +239,8 @@ mod tests {
     fn overlay_tap_fires_on_quick_release() {
         let mut s = ov();
         assert!(s.update(&b(Buttons::ASSISTANT), 0).is_empty(), "nothing on press");
-        assert_eq!(s.update(&b(Buttons::empty()), 120), vec![Action::OverlayTap]);
+        assert!(s.update(&b(Buttons::empty()), 120).is_empty(), "waits for a possible second tap");
+        assert_eq!(s.update(&b(Buttons::empty()), 120 + DOUBLE_TAP_MS), vec![Action::OverlayTap]);
     }
 
     #[test]
@@ -250,5 +287,37 @@ mod tests {
         let mut s = Special::new(AssistantAction::Off, CaptureAction::Off, StadiaAction::GuideOnly);
         assert!(s.update(&b(Buttons::ASSISTANT | Buttons::CAPTURE | Buttons::STADIA), 0).is_empty());
         assert!(s.update(&b(Buttons::empty()), 2000).is_empty());
+    }
+
+    #[test]
+    fn tap_waits_for_a_possible_second_tap() {
+        let mut t = TapHold::default();
+        assert_eq!(t.update(true, 0), None);
+        assert_eq!(t.update(false, 100), None);
+        assert_eq!(t.deadline(), Some(400));
+        assert!(t.busy());
+        assert_eq!(t.update(false, 399), None);
+        assert_eq!(t.update(false, 400), Some(Action::OverlayTap));
+        assert!(!t.busy());
+    }
+
+    #[test]
+    fn double_tap_starts_live_at_once() {
+        let mut t = TapHold::default();
+        t.update(true, 0);
+        t.update(false, 100);
+        assert_eq!(t.update(true, 250), Some(Action::LiveStart));
+        assert_eq!(t.update(false, 300), None, "the second release is not a tap");
+        assert_eq!(t.update(false, 1000), None);
+        assert!(!t.busy());
+    }
+
+    #[test]
+    fn hold_still_talks() {
+        let mut t = TapHold::default();
+        t.update(true, 0);
+        assert_eq!(t.update(true, 300), Some(Action::TalkStart));
+        assert_eq!(t.update(false, 900), Some(Action::TalkEnd));
+        assert_eq!(t.update(false, 2000), None);
     }
 }
