@@ -51,7 +51,8 @@ function setMode(m) {
   if (m !== mode) prevPad = ""; // a fresh start for pad edges
   if (mode === "hidden" && m !== "hidden" && m !== "live") enter();
   if (m === "hidden") document.body.classList.remove("enter");
-  if (m === "live" && mode !== "live") invoke("get_settings").then((s) => liveView.show(s));
+  // Live may already be over (no mic, no key) when the settings arrive: show only if still live.
+  if (m === "live" && mode !== "live") invoke("get_settings").then((s) => mode === "live" && liveView.show(s));
   if (m !== "live" && mode === "live") liveView.hide();
   mode = m;
   document.body.classList.toggle("talk", m === "talk");

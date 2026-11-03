@@ -147,10 +147,10 @@ fn connect(key: &str, model: &str, voice: &str, grounded: bool, resume: Option<&
             s => ConnErr::Retry(format!("http {s}")),
         },
         tungstenite::Error::Io(_) | tungstenite::Error::Tls(_) => ConnErr::Fatal(MSG_OFFLINE),
-        other => ConnErr::Retry(other.to_string()),
+        other => ConnErr::Retry(other.to_string().replace(key, "***")), // never log the key
     })?;
     ws.send(Message::Text(setup_msg(model, voice, grounded, resume).to_string().into()))
-        .map_err(|e| ConnErr::Retry(e.to_string()))?;
+        .map_err(|e| ConnErr::Retry(e.to_string().replace(key, "***")))?;
     set_poll(&mut ws, Some(SETUP_WAIT));
     loop {
         match ws.read() {
@@ -174,7 +174,7 @@ fn connect(key: &str, model: &str, voice: &str, grounded: bool, resume: Option<&
                 });
             }
             Ok(_) => {}
-            Err(e) => return Err(ConnErr::Retry(e.to_string())),
+            Err(e) => return Err(ConnErr::Retry(e.to_string().replace(key, "***"))),
         }
     }
     set_poll(&mut ws, Some(READ_POLL));
