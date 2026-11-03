@@ -2,6 +2,7 @@ pub mod bridge;
 pub mod gate;
 pub mod gemini;
 pub mod hotkey;
+pub mod live;
 pub mod mapping;
 pub mod pccmd;
 pub mod report;
