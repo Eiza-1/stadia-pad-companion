@@ -1,0 +1,100 @@
+/* Gemini Live panel (overlay.html #livewrap), from the approved mockup live-orb-v4.html: the pill springs
+   up and out into a dark floating glass panel with no outline, soft Google-colour light at its edges,
+   and a liquid Google-colour orb as the waveform. --lv (0..1) is the sound level; body[data-glass]
+   is the Live panel setting; body[data-anim] the entrance setting. */
+
+:root {
+  --spring: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1.004 83.8%, 1);
+  --lv: .12;
+  --tint: .32;
+  --tintEdge: .5;
+}
+body[data-glass="Light"] { --tint: .10; --tintEdge: .26; }
+body[data-glass="Solid"] { --tint: .78; --tintEdge: .88; }
+
+#livewrap { position: relative; z-index: 1; display: flex; justify-content: center; }
+#livewrap[hidden] { display: none; }
+body.live #cards, body.live #pillwrap, body.live #keycard { display: none; }
+
+.lpanel { position: relative; width: 560px; height: 470px; border-radius: 44px; overflow: hidden; display: flex; flex-direction: column; align-items: center;
+  background: radial-gradient(120% 95% at 50% 42%, rgba(16, 19, 28, var(--tint)) 45%, rgba(16, 19, 28, var(--tintEdge)) 100%);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, .42), 0 8px 20px rgba(0, 0, 0, .25); }
+/* Entrance: starts as the pill (600 x 64, fully round) and springs out and up. */
+body[data-anim="Glow"] .lpanel { transition: width .7s var(--spring), height .7s var(--spring), border-radius .7s var(--spring); }
+body[data-anim="Glow"] #livewrap.from-pill .lpanel { width: 600px; height: 64px; border-radius: 32px; }
+body[data-anim="Fade"] #livewrap .lpanel { transition: opacity .2s ease-out; }
+body[data-anim="Fade"] #livewrap.from-pill .lpanel { opacity: 0; }
+.lpanel > :not(.ledge):not(.lspec) { transition: opacity .3s .15s, transform .7s var(--spring); }
+#livewrap.from-pill .lpanel > :not(.ledge):not(.lspec) { opacity: 0; transform: translateY(14px) scale(.96); transition: none; }
+
+/* The edge: soft Google-colour light seeping in, no line, slowly shifting. */
+.ledge { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background:
+    radial-gradient(70% 34% at 0% 0%, rgba(66, 133, 244, .30), transparent 72%),
+    radial-gradient(70% 34% at 100% 0%, rgba(234, 67, 53, .24), transparent 72%),
+    radial-gradient(70% 38% at 100% 100%, rgba(251, 188, 4, .22), transparent 72%),
+    radial-gradient(70% 38% at 0% 100%, rgba(52, 168, 83, .24), transparent 72%),
+    radial-gradient(18% 60% at 0% 50%, rgba(155, 114, 203, .16), transparent 75%),
+    radial-gradient(18% 60% at 100% 50%, rgba(217, 101, 112, .14), transparent 75%);
+  animation: ledge 6s ease-in-out infinite alternate; }
+@keyframes ledge { to { filter: hue-rotate(25deg) brightness(1.15); } }
+/* Light catching the curved glass (top-left sweep, faint bottom-right): light, not an outline. */
+.lspec { position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  background:
+    radial-gradient(55% 20% at 24% 0%, rgba(255, 255, 255, .45), transparent 70%),
+    radial-gradient(12% 38% at 0% 24%, rgba(255, 255, 255, .24), transparent 70%),
+    radial-gradient(45% 14% at 78% 100%, rgba(255, 255, 255, .16), transparent 70%);
+  -webkit-mask: radial-gradient(120% 120% at 50% 50%, transparent 56%, #000 76%); mask: radial-gradient(120% 120% at 50% 50%, transparent 56%, #000 76%); }
+body[data-glass="Solid"] .lspec { opacity: .7; }
+
+.ltop { display: flex; align-items: center; gap: 8px; margin-top: 22px; font-size: 15px; color: #c9ccd2; }
+.ltop .spark { width: 16px; height: 16px; background: conic-gradient(from 200deg, #4285f4, #9b72cb, #d96570, #4285f4); clip-path: polygon(50% 0, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0 50%, 38% 38%); }
+.lstate { margin-top: 2px; min-height: 20px; font-size: 13px; color: #a8adb5; }
+
+/* The orb: blurred Google colours turning inside a breathing sphere; --lv swells it with the voice. */
+.lstage { position: relative; width: 260px; height: 230px; margin-top: 4px; display: grid; place-items: center; }
+.lhalo { position: absolute; width: 300px; height: 300px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(110, 120, 255, calc(.18 + var(--lv) * .35)), rgba(66, 133, 244, .06) 60%, transparent 75%);
+  transform: scale(calc(.9 + var(--lv) * .35)); transition: transform .12s linear; }
+.orb { position: relative; width: 170px; height: 170px; border-radius: 50%; overflow: hidden; background: #0e1220;
+  transform: scale(calc(.92 + var(--lv) * .22)); transition: transform .1s linear; animation: wobble 7s ease-in-out infinite; }
+@keyframes wobble {
+  0%, 100% { border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+  25% { border-radius: 54% 46% 52% 48% / 47% 55% 45% 53%; }
+  50% { border-radius: 47% 53% 46% 54% / 54% 46% 54% 46%; }
+  75% { border-radius: 52% 48% 55% 45% / 46% 52% 48% 54%; } }
+.blobs { position: absolute; inset: -15%; filter: blur(16px) saturate(1.5); animation: spin 14s linear infinite; }
+.blobs b { position: absolute; width: 52%; height: 52%; border-radius: 50%; opacity: .92; }
+.blobs b:nth-child(1) { left: 6%; top: 8%; background: #ea4335; animation: m1 5.2s ease-in-out infinite; }
+.blobs b:nth-child(2) { right: 4%; top: 10%; background: #fbbc04; animation: m2 6.1s ease-in-out infinite; }
+.blobs b:nth-child(3) { left: 10%; bottom: 4%; background: #34a853; animation: m3 5.7s ease-in-out infinite; }
+.blobs b:nth-child(4) { right: 8%; bottom: 6%; background: #4285f4; animation: m4 4.8s ease-in-out infinite; }
+.blobs b:nth-child(5) { left: 32%; top: 32%; width: 36%; height: 36%; background: #8f6bff; opacity: .55; animation: m2 7.3s ease-in-out infinite reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes m1 { 50% { transform: translate(22%, 18%) scale(1.15); } }
+@keyframes m2 { 50% { transform: translate(-20%, 24%) scale(.9); } }
+@keyframes m3 { 50% { transform: translate(18%, -22%) scale(1.2); } }
+@keyframes m4 { 50% { transform: translate(-24%, -16%) scale(1.05); } }
+.oshade { position: absolute; inset: 0; border-radius: inherit;
+  background:
+    radial-gradient(30% 22% at 34% 24%, rgba(255, 255, 255, .45), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(70% 70% at 50% 50%, transparent 55%, rgba(5, 8, 20, .55) 100%),
+    radial-gradient(90% 60% at 50% 105%, rgba(0, 0, 0, .35), transparent 70%); }
+.lring { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -85px 0 0 -85px; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, transparent 62%, rgba(120, 150, 255, .30) 80%, transparent 100%); animation: ringOut 1.8s ease-out forwards; }
+@keyframes ringOut { from { transform: scale(.85); opacity: .9; } to { transform: scale(2.1); opacity: 0; } }
+body.muted .orb { filter: grayscale(.7) brightness(.7); }
+
+.lcap { width: 470px; min-height: 52px; margin-top: 6px; text-align: center; font-size: 17px; line-height: 1.45; color: #e8eaed; }
+.lyou { display: block; min-height: 18px; margin-bottom: 2px; font-size: 13px; color: #a8adb5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lold { color: #a8adb5; }
+.lctl { display: flex; gap: 14px; margin-top: auto; margin-bottom: 24px; }
+.lc { width: 54px; height: 54px; border-radius: 50%; display: grid; place-items: center; background: rgba(255, 255, 255, .09); transition: background .2s, transform .3s var(--spring); }
+.lc:hover { transform: scale(1.06); background: rgba(255, 255, 255, .14); }
+.lc svg { width: 20px; height: 20px; stroke: #fff; stroke-width: 2.2; }
+.lc .slash { opacity: 0; }
+.lc[aria-pressed="true"] { background: #f2b8b5; }
+.lc[aria-pressed="true"] svg { stroke: #3b0a07; }
+#lmute[aria-pressed="true"] .slash { opacity: 1; }
+.lc.end { background: #d93025; }
+.lc.end:hover { background: #e8453c; }

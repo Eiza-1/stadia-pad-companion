@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>Gemini</title>
   <link rel="stylesheet" href="css/overlay.css">
+  <link rel="stylesheet" href="css/overlay-live.css">
   <script type="module" src="js/overlay/main.js"></script>
 </head>
 <body>
@@ -51,6 +52,30 @@
       </div>
       <p id="hint" class="hint" role="status"></p>
       <div id="kb"></div>
+    </section>
+    <!-- Gemini Live (live-view.js): the pill springs into this panel; the orb is the waveform. -->
+    <section id="livewrap" hidden>
+      <div class="lpanel" id="lpanel">
+        <i class="ledge" aria-hidden="true"></i><i class="lspec" aria-hidden="true"></i>
+        <div class="ltop"><i class="spark" aria-hidden="true"></i>Gemini Live</div>
+        <div class="lstate" id="lstate" role="status">Connecting…</div>
+        <div class="lstage" id="lstage" aria-hidden="true">
+          <div class="lhalo"></div>
+          <div class="orb"><div class="blobs"><b></b><b></b><b></b><b></b><b></b></div><div class="oshade"></div></div>
+        </div>
+        <div class="lcap" aria-live="polite"><span class="lyou" id="lyou"></span><span class="lold" id="lold"></span> <span id="lnow"></span></div>
+        <div class="lctl">
+          <button id="lmute" class="lc" type="button" aria-label="Mute mic" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/><path class="slash" d="M4 4l16 16"/></svg>
+          </button>
+          <button id="lshare" class="lc" type="button" aria-label="Share screen" aria-pressed="false">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 14V8M9 11l3-3 3 3"/></svg>
+          </button>
+          <button id="lend" class="lc end" type="button" aria-label="End Live">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+          </button>
+        </div>
+      </div>
     </section>
   </main>
 </body>

@@ -4,6 +4,7 @@
 
 import { createStack, isLong } from "./cards.js";
 import { attach } from "./orbit-view.js";
+import { attachLive } from "./live-view.js";
 
 const tauri = window.__TAURI__;
 const invoke = (cmd, args) => tauri.core.invoke(cmd, args);
@@ -48,11 +49,13 @@ function enter() {
 // ---------- the pill ----------
 function setMode(m) {
   if (m !== mode) prevPad = ""; // a fresh start for pad edges
-  if (mode === "hidden" && m !== "hidden") enter();
+  if (mode === "hidden" && m !== "hidden" && m !== "live") enter();
   if (m === "hidden") document.body.classList.remove("enter");
+  if (m === "live" && mode !== "live") invoke("get_settings").then((s) => liveView.show(s));
+  if (m !== "live" && mode === "live") liveView.hide();
   mode = m;
   document.body.classList.toggle("talk", m === "talk");
-  const showPill = m !== "hidden";
+  const showPill = m !== "hidden" && m !== "live";
   const needKey = showPill && !keyOk;
   $("keycard").hidden = !needKey;
   $("pillwrap").hidden = !showPill;
@@ -111,11 +114,26 @@ $("field").addEventListener("keydown", (e) => {
   if (e.key === "Escape") back();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && document.activeElement !== $("field")) close();
+  if (e.key !== "Escape" || document.activeElement === $("field")) return;
+  if (mode === "live") invoke("live_end");
+  else close();
 });
 $("mic").onclick = () => hint("Hold the Assistant button (or your shortcut) and speak");
 $("plus").onclick = () => hint("Coming soon: add files and search your PC");
-for (const id of ["live", "share"]) $(id).onclick = () => hint("Coming soon: Gemini Live and Circle to Search");
+// Gemini Live: the waveform button talks; "Share screen with Live" also shares the screen.
+$("live").onclick = () => (keyOk ? invoke("live_start_cmd", { share: false }) : setMode(mode));
+$("share").onclick = () => (keyOk ? invoke("live_start_cmd", { share: true }) : setMode(mode));
+const liveView = attachLive({
+  invoke,
+  listen,
+  onEnded: (why) => {
+    if (!why) return;
+    const id = `live-${Date.now()}`;
+    stack.add(id, "Gemini Live");
+    stack.error(id, why);
+    drawCards();
+  },
+});
 
 // Dragging by the handle; the new spot is remembered once the window stops moving. Only a real drag
 // counts: the window also moves whenever its height changes (overlay.rs keeps the bottom edge put).
