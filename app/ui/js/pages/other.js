@@ -4,7 +4,7 @@
 import { settings, status, save, onSettings, onStatus, invoke, appInfo } from "../ipc.js";
 import { h, toggle, panel, seg, slider } from "../ui.js";
 
-let start, hide, kv, voiceSeg, voicePick, sizeSlider, sizeSeg, animSeg;
+let start, hide, kv, voiceSeg, voicePick, sizeSlider, sizeSeg, animSeg, listenSeg, glassSeg, dimSeg;
 const SIZES = [{ value: 82, label: "Compact" }, { value: 100, label: "Standard" }, { value: 120, label: "Large" }];
 const pct = () => Math.round((settings.overlay_scale ?? 1) * 100);
 const quick = (p) => (SIZES.some((o) => o.value === p) ? p : null);
@@ -37,6 +37,9 @@ export function init(el) {
     sizeSlider.set(pct());
     sizeSeg.set(quick(pct()));
     animSeg.set(settings.overlay_anim || "Glow");
+    listenSeg.set(settings.live_listen || "Speakers");
+    glassSeg.set(settings.live_glass || "Frosted");
+    dimSeg.set(settings.live_dim || "EasesOff");
   });
   onStatus(renderAbout);
   renderAbout();
@@ -107,6 +110,23 @@ function geminiPanel() {
     speakRow.append(voicePick, sample);
   });
 
+  // Gemini Live: how the mic behaves, how see-through the panel is, and the screen dim behind it.
+  const liveRow = (title, desc, options, value, key) => {
+    const row = h(`<div class="srow col"><span class="stext"><b></b><small></small></span></div>`);
+    row.querySelector("b").textContent = title;
+    row.querySelector("small").textContent = desc;
+    const sg = seg(options, value, (v) => save((s) => (s[key] = v)));
+    row.append(sg);
+    return [row, sg];
+  };
+  let listenRow, glassRow, dimRow;
+  [listenRow, listenSeg] = liveRow("Live listening", "Speakers: Gemini can't hear itself, hold Assistant to talk over it. Headphones: talk any time, like a call.",
+    [{ value: "Speakers", label: "Speakers" }, { value: "Headphones", label: "Headphones" }], settings.live_listen || "Speakers", "live_listen");
+  [glassRow, glassSeg] = liveRow("Live panel", "How see-through the Live panel is.",
+    [{ value: "Light", label: "Light glass" }, { value: "Frosted", label: "Frosted glass" }, { value: "Solid", label: "Nearly solid" }], settings.live_glass || "Frosted", "live_glass");
+  [dimRow, dimSeg] = liveRow("Live dim", "Eases off dims the screen as Live opens, then lightens it after 2 s so you can keep playing.",
+    [{ value: "EasesOff", label: "Eases off" }, { value: "StaysDark", label: "Stays dark" }], settings.live_dim || "EasesOff", "live_dim");
+
   // Pill size: an open overlay resizes as the slider moves (set_settings tells it).
   const sizeRow = h(`<div class="srow col"><span class="stext"><b>Pill size</b><small>Standard is 600 × 64 px on a 1080p screen. The keyboard and answers follow it.</small></span></div>`);
   const setSize = (p) => save((s) => (s.overlay_scale = p / 100));
@@ -122,7 +142,7 @@ function geminiPanel() {
   const posRow = h(`<div class="srow"><span class="stext"><b>Overlay position</b><small>Drag the pill by its handle to move it. This puts it back at the bottom centre.</small></span><button class="btn text">Reset</button></div>`);
   posRow.querySelector("button").onclick = () => invoke("overlay_reset_pos").then(() => say("The overlay opens at the bottom centre again."));
 
-  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, speakRow, sizeRow, animRow, posRow);
+  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, speakRow, listenRow, glassRow, dimRow, sizeRow, animRow, posRow);
   render();
   return g;
 }

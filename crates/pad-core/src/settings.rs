@@ -59,6 +59,32 @@ pub enum OverlayAnim {
 
 pub const DEFAULT_VOICE: &str = "Aoede";
 
+/// Gemini Live: on speakers the mic closes while Gemini talks (hold Assistant to talk over it); on
+/// headphones it stays open, like a call.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LiveListen {
+    #[default]
+    Speakers,
+    Headphones,
+}
+
+/// How see-through the Live panel is.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LiveGlass {
+    Light,
+    #[default]
+    Frosted,
+    Solid,
+}
+
+/// The screen dim behind the Live panel: lightens after 2 s, or stays dark.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum LiveDim {
+    #[default]
+    EasesOff,
+    StaysDark,
+}
+
 fn not_migrated() -> bool {
     false
 }
@@ -199,6 +225,9 @@ pub struct Settings {
     pub overlay_anim: OverlayAnim,
     /// Gemini voice that reads answers aloud (one of `gemini::VOICES`).
     pub voice: String,
+    pub live_listen: LiveListen,
+    pub live_glass: LiveGlass,
+    pub live_dim: LiveDim,
 }
 
 impl Default for Settings {
@@ -222,6 +251,9 @@ impl Default for Settings {
             overlay_scale: 1.0,
             overlay_anim: OverlayAnim::Glow,
             voice: DEFAULT_VOICE.into(),
+            live_listen: LiveListen::Speakers,
+            live_glass: LiveGlass::Frosted,
+            live_dim: LiveDim::EasesOff,
         }
     }
 }
@@ -403,5 +435,16 @@ mod tests {
         assert_eq!(Settings::load(&p).voice, "Aoede", "an unknown voice goes back to the default");
         let p = write_tmp(r#"{"voice":"Puck"}"#);
         assert_eq!(Settings::load(&p).voice, "Puck");
+    }
+
+    #[test]
+    fn live_defaults_are_speakers_frosted_eases_off() {
+        let s = Settings::default();
+        assert_eq!(s.live_listen, LiveListen::Speakers);
+        assert_eq!(s.live_glass, LiveGlass::Frosted);
+        assert_eq!(s.live_dim, LiveDim::EasesOff);
+        let p = write_tmp(r#"{"live_glass":"Light","live_dim":"StaysDark","live_listen":"Headphones"}"#);
+        let s = Settings::load(&p);
+        assert_eq!((s.live_glass, s.live_dim, s.live_listen), (LiveGlass::Light, LiveDim::StaysDark, LiveListen::Headphones));
     }
 }
