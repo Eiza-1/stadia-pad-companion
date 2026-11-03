@@ -1,9 +1,11 @@
 # Gemini Live and Share screen: design
 
-Date: 2026-11-03. Status: draft for the user's approval. Stage 4 of
+Date: 2026-11-03. Status: approved by the user 2026-11-03 ("the live designs are good", then the orb
+panel and glass mockups: "okay i like it now ... start building"). Stage 4 of
 `2026-11-02-gemini-overlay-design.md` (its section "Share screen with Live / Live voice"), brought forward
-by the user ahead of PC commands and Circle to Search. Mockup the user approved ("it's good to go"):
-`.superpowers/brainstorm/1878-1793670620/content/features-v1.html`, section 3.
+by the user ahead of PC commands and Circle to Search. Approved mockups (in
+`.superpowers/brainstorm/1878-1793670620/content/`): `features-v1.html` section 3 (behaviour), superseded
+in look by **`live-orb-v4.html`** (the Live panel: orb, Liquid Glass, gradient edge, no outline).
 
 ## Intent
 
@@ -28,21 +30,47 @@ Gemini Live's native audio voices are the bar.
 - **The keyboard shortcut** (Ctrl+Alt+G by default): double-tap starts Live the same way.
 - No key saved yet: the existing key setup card shows instead, as for typed questions.
 
+### The Live panel (user's design, `live-orb-v4.html`)
+
+- **Entrance (user's spec):** the small pill rapidly expands outwards and upwards, morphing into a large
+  dark floating panel (about 560 x 470 px at Standard size, bottom-centred where the pill was), on a smooth
+  spring curve with a slight overshoot (about 0.7 s). Energetic and responsive. The background dims.
+  End reverses it: the panel springs back down into the pill and the dim fades.
+- **The orb (user's spec):** in the centre, a liquid-like 3D orb of heavily diffused, glowing Google colours
+  (red, yellow, green, blue, a touch of purple) that continuously undulates, morphs and breathes. It is the
+  audio waveform: slow breathing while waiting, swelling and rippling with the player's voice, moving with
+  Gemini's voice while it answers; rings of soft light spread outward on louder sounds. A specular highlight
+  and darker rim make it read as a sphere.
+- Panel layout, top to bottom: sparkle + "Gemini Live", a one-line state ("Listening…", "Speaking · hold
+  Assistant to cut in", "Mic muted"), the orb, captions (what the player said, dim, one line; what Gemini
+  says, a line or two, older words fading), and three round buttons: **Mute mic**, **Share screen**
+  (toggle), **End** (red).
+- **No outline** (user's decision): no border line or ring around the panel. Its edge is only soft
+  Google-colour light (blue top-left, red top-right, yellow bottom-right, green bottom-left, faint purple
+  and pink at the sides) fading into the glass and slowly shifting hue.
+- **Glass (user's decision: all three, picked in Settings)**, inspired by Apple's Liquid Glass: the panel is
+  see-through, darker towards its edges, with light catching the top-left (a soft specular sweep, not a
+  line). Settings › Other › Gemini › **Live panel**: **Light glass**, **Frosted glass** (default), **Nearly
+  solid**. The game behind shows through; Frosted and Nearly solid blur it (Windows' own acrylic backdrop
+  behind the window, since a WebView can't blur other apps). The lens-like bending of the game at the
+  rounded edges shown in the mockup needs the screen behind the panel copied about 30 times a second; it is
+  a later, opt-in "Liquid Glass bending" setting (off by default), not part of this build (my call: it costs
+  graphics power while Live is open).
+- **Dim (user's decision: a setting)**: Settings › Gemini › **Live dim**: **Eases off** (default: dims
+  strongly as Live opens, then eases to a light dim after 2 s so the game stays playable) or **Stays dark**.
+  The dim covers the screen the game is on, never takes clicks or focus, and is excluded from what Share
+  screen sends.
+- The Entrance animation setting applies: Glow = the spring morph; Simple fade = the panel fades in;
+  Off = it appears at once. The orb always moves, because it shows Gemini hearing you.
+
 ### During Live
 
-- The big pill turns into the **Live pill** (mockup): Gemini sparkle and "Live" on the left, a waveform in
-  the middle that moves with whoever is speaking (Gemini's voice, or the player's mic level), and three round
-  buttons on the right: **Mute mic**, **Share screen** (toggle), **End** (red).
-- A soft blue glow breathes behind the pill while Live is on (the entrance animation setting applies: Off
-  means no breathing either).
-- **Captions**: what Gemini says appears as text above the pill, a line or two at a time, newest words
-  brightest, older lines fading (mockup). What the player said may show dimmer above it (my call: yes,
-  one line, from the API's input transcription).
+- **Captions** as above. What the player said shows from the API's input transcription (my call).
 - **The game keeps the pad.** Live does not capture pad input; the player keeps playing while talking. The
   keyboard rail is not shown in Live.
 - Assistant button during Live: **tap = end Live**; **hold = talk over Gemini** (see "Echo and
   interrupting"). Shortcut: same.
-- The Live pill's buttons work with the mouse. Pad control of those buttons is not needed (my call: Assistant
+- The Live panel's buttons work with the mouse. Pad control of those buttons is not needed (my call: Assistant
   tap ends; Share screen and Mute are mouse-only in v1).
 
 ### Share screen
@@ -139,8 +167,12 @@ never on without the Live pill visible.
 
 - Gemini Live and Share screen come next, before Circle to Search and "+" (2026-11-03, "it's good to go"
   on the features mockup, Live first).
-- The look in the features mockup, section 3: Live pill with waveform, mute / share / end buttons, captions
-  above, red frame and "Sharing screen with Gemini" chip.
+- The look in `live-orb-v4.html`: the pill springs into a dark floating panel with the Google-colour orb
+  as the waveform, dimmed background, captions, mute / share / end buttons; red frame and "Sharing screen
+  with Gemini" chip for Share screen.
+- No outline around the panel; soft Google-colour gradient light at its edges.
+- Glass strength and dim behaviour are user settings with all options available (Light / Frosted / Nearly
+  solid; Eases off / Stays dark).
 - Natural voices only; no robotic speech.
 - Each player uses their own free key.
 
@@ -148,6 +180,8 @@ never on without the Live pill visible.
 
 - Double-tap Assistant (and the shortcut) starts Live; tap during Live ends it; hold during Live talks over.
 - Speakers mode (mic muted while Gemini talks) is the default until echo cancellation is proven.
+- Defaults: Frosted glass, Dim eases off.
+- Lens bending of the game ("Liquid Glass bending") is a later opt-in setting, not in this build.
 - Captions on, including one dim line of what the player said.
 - Share screen captures the screen the game / pill is on, about one frame a second, ~1024 px.
 - First Share screen shows the privacy note once.
