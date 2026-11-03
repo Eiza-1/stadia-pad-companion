@@ -1,6 +1,7 @@
 // Draws the Orbit rail under the pill and drives it from the pad (overlay main.js hands us pad states).
 // Holding the stick or D-pad glides: one step at once, the next after 320 ms, then every 70 ms
-// (40 ms past 85 % stick deflection).
+// (40 ms past 85 % stick deflection). Suggestions: D-pad up / down chooses, Y takes it; a click or Tab
+// (Up / Down in the field) does the same from the mouse and keyboard.
 
 import { createOrbit, PAGES } from "./orbit.js";
 
@@ -34,9 +35,22 @@ export function attach({ box, field, fit, send, keyboard }) {
     const sugg = document.createElement("div");
     sugg.className = "sugg";
     st.suggestions.forEach((w, i) => {
-      const b = document.createElement("span");
-      b.className = `glass${i === 0 ? " on" : ""}`;
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = `glass${i === st.selected ? " on" : ""}`;
       b.textContent = w;
+      if (i === st.selected) {
+        const y = document.createElement("kbd");
+        y.textContent = "Y";
+        y.title = "Press Y (or Tab) to use this word";
+        b.append(y);
+      }
+      b.addEventListener("mousedown", (e) => e.preventDefault()); // keep the caret in the field
+      b.onclick = () => {
+        orbit.pick(i);
+        sync();
+        draw();
+      };
       sugg.append(b);
     });
     const tabs = document.createElement("div");
@@ -77,6 +91,15 @@ export function attach({ box, field, fit, send, keyboard }) {
     orbit.text = field.value;
     draw();
   });
+  field.addEventListener("keydown", (e) => {
+    if (!shown || !orbit.state.suggestions.length) return;
+    const edge = e.key === "Tab" ? "Y" : e.key === "ArrowDown" ? "down" : e.key === "ArrowUp" ? "up" : null;
+    if (!edge) return;
+    e.preventDefault(); // orbit.text already follows the field (input event above)
+    orbit.input(edge);
+    if (edge === "Y") sync();
+    draw();
+  });
 
   keyboard.onShow = () => {
     shown = true;
@@ -104,6 +127,12 @@ export function attach({ box, field, fit, send, keyboard }) {
       return true;
     }
     let typed = false;
+    for (const [b, e] of [["DPAD_UP", "up"], ["DPAD_DOWN", "down"]]) {
+      if (pressed(b)) {
+        orbit.input(e);
+        draw();
+      }
+    }
     for (const e of ["A", "B", "X", "Y", "LB", "RB", "L3"]) {
       if (pressed(e)) {
         orbit.input(e);

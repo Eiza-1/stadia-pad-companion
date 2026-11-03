@@ -78,3 +78,44 @@ test("suggest is case-insensitive, prefix-based and limited", () => {
   assert.ok(suggest("b").length <= 4);
   assert.deepEqual(suggest(""), []);
 });
+
+test("D-pad down and up choose among suggestions; Y takes the chosen one", () => {
+  const o = createOrbit();
+  o.text = "the wa";
+  const s = o.state.suggestions;
+  assert.ok(s.length >= 3, "several words for 'wa'");
+  assert.equal(o.state.selected, 0);
+  o.input("down");
+  o.input("down");
+  assert.equal(o.state.selected, 2);
+  o.input("up");
+  assert.equal(o.state.selected, 1);
+  o.input("Y");
+  assert.equal(o.text, `the ${s[1]} `);
+});
+
+test("the choice stays within the list and resets when the word changes", () => {
+  const o = createOrbit();
+  o.text = "wa";
+  const n = o.state.suggestions.length;
+  for (let i = 0; i < 10; i++) o.input("down");
+  assert.equal(o.state.selected, n - 1);
+  for (let i = 0; i < 10; i++) o.input("up");
+  assert.equal(o.state.selected, 0);
+  o.input("down");
+  o.input("A");
+  assert.equal(o.state.selected, 0, "typing resets the choice");
+  o.input("down");
+  o.text = "wa";
+  assert.equal(o.state.selected, 0, "new text from the field resets the choice");
+});
+
+test("pick(i) takes a clicked suggestion", () => {
+  const o = createOrbit();
+  o.text = "the wa";
+  const s = o.state.suggestions;
+  o.pick(2);
+  assert.equal(o.text, `the ${s[2]} `);
+  o.pick(9); // nothing there: no change
+  assert.equal(o.text, `the ${s[2]} `);
+});
