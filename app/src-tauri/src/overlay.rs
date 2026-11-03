@@ -9,6 +9,8 @@ use pad_core::special::Action;
 pub enum Mode {
     Type,
     Talk,
+    /// Gemini Live: the orb panel; the game keeps the pad.
+    Live,
 }
 
 /// What the overlay glue must do in response to a button action or a window event.
@@ -29,6 +31,12 @@ pub enum Cmd {
     SpeechError(&'static str),
     /// Give the text field real keyboard focus (the keyboard shortcut was used).
     FocusField,
+    /// Start a Gemini Live session (mic, voice, dim window).
+    LiveStart,
+    /// End it: everything it opened closes.
+    LiveEnd,
+    /// Speakers mode: Assistant held (`true`) / released, talking over Gemini.
+    LiveTalk(bool),
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
@@ -53,11 +61,39 @@ pub struct OverlayState {
     speech_error: Option<&'static str>,
     /// The keyboard shortcut opened the window: focus the field once it's ready.
     focus_pending: bool,
+    /// A Live session is on.
+    live: bool,
 }
 
 impl OverlayState {
     pub fn on_action(&mut self, a: Action) -> Vec<Cmd> {
+        if self.live {
+            return match a {
+                Action::OverlayTap => self.on_end_live(),
+                Action::TalkStart => vec![Cmd::LiveTalk(true)],
+                Action::TalkEnd => vec![Cmd::LiveTalk(false)],
+                _ => vec![],
+            };
+        }
         match a {
+            Action::LiveStart => match self.win {
+                Win::None | Win::Creating => {
+                    let mut out = self.open_or_show(Mode::Live);
+                    out.retain(|c| *c == Cmd::Open);
+                    out
+                }
+                Win::Ready => {
+                    let held = self.shown.is_some();
+                    self.shown = Some(Mode::Live);
+                    self.live = true;
+                    let mut out = vec![Cmd::Show(Mode::Live)];
+                    if held {
+                        out.push(Cmd::Capture(false)); // Live never holds the pad
+                    }
+                    out.push(Cmd::LiveStart);
+                    out
+                }
+            },
             Action::TalkStart => {
                 self.talking = true;
                 let mut out = self.open_or_show(Mode::Talk);
@@ -77,8 +113,7 @@ impl OverlayState {
                 self.shown = None;
                 vec![Cmd::Hide, Cmd::Capture(false)]
             }
-            // Until Gemini Live lands (plan 2026-11-03, Task 7), a double-tap opens typing like a tap.
-            Action::OverlayTap | Action::LiveStart => {
+            Action::OverlayTap => {
                 let mut out = self.open_or_show(Mode::Type);
                 if !out.is_empty() {
                     out.push(Cmd::Capture(true));
@@ -118,7 +153,35 @@ impl OverlayState {
         if std::mem::take(&mut self.send_pending) {
             out.push(Cmd::SendTranscript);
         }
+        if self.want == Some(Mode::Live) {
+            self.live = true;
+            out.push(Cmd::LiveStart);
+        }
         out
+    }
+
+    /// The player ended Live (End button, Assistant tap).
+    pub fn on_end_live(&mut self) -> Vec<Cmd> {
+        if !self.live {
+            return vec![];
+        }
+        self.live = false;
+        self.shown = None;
+        vec![Cmd::LiveEnd, Cmd::Hide]
+    }
+
+    /// The session ended on its own (Google closed it, mic error): the panel tucks away.
+    pub fn on_live_ended(&mut self) -> Vec<Cmd> {
+        if !self.live {
+            return vec![];
+        }
+        self.live = false;
+        self.shown = None;
+        vec![Cmd::Hide]
+    }
+
+    pub fn live(&self) -> bool {
+        self.live
     }
 
     /// The same actions from the keyboard shortcut: a tap also gives the field keyboard focus, since
@@ -156,6 +219,9 @@ impl OverlayState {
 
     /// The pad disconnected: end a talk in progress, or tuck the pill away and release the pad.
     pub fn on_pad_gone(&mut self) -> Vec<Cmd> {
+        if self.live {
+            return vec![]; // Live doesn't use the pad
+        }
         if self.talking {
             return self.on_action(Action::TalkEnd);
         }
@@ -203,12 +269,15 @@ impl OverlayState {
 use crate::AppState;
 use pad_core::gemini::{self, Turn};
 use pad_core::settings::AnswerVoice;
+use pad_core::win::live_session::{LiveConfig, LiveSession, LiveUpdate};
 use pad_core::win::{keystore, overlay_win, sound, speech::Dictation, speech::SpeechEvent};
 use serde_json::json;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 pub const LABEL: &str = "overlay";
+/// The Live dim and Share screen frame: a full-screen window that never takes clicks or focus.
+pub const DIM_LABEL: &str = "livedim";
 /// Window width in logical px before the page reports its own (it follows the pill size setting:
 /// 720 at Standard, the 600 px pill plus room for its glow); the height follows the content.
 const WIDTH: f64 = 720.0;
@@ -227,6 +296,10 @@ pub struct Overlay {
     next_id: Mutex<u64>,
     /// Width the page asked for (logical px); 0 = not reported yet.
     width: Mutex<f64>,
+    /// The Gemini Live session while Live is on.
+    live: Mutex<Option<LiveSession>>,
+    /// "Share screen with Live" started it: turn sharing on once the session exists.
+    share_on_start: Mutex<bool>,
 }
 
 fn lk<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -291,6 +364,13 @@ fn run(app: &AppHandle, cmds: Vec<Cmd>) {
             }
             Cmd::Capture(on) => capture(app, on),
             Cmd::SpeechError(m) => emit(app, "stt", json!({ "error": m })),
+            Cmd::LiveStart => live_start(app),
+            Cmd::LiveEnd => live_teardown(app),
+            Cmd::LiveTalk(on) => {
+                if let Some(s) = lk(&ov(app).live).as_ref() {
+                    s.set_talk_over(on);
+                }
+            }
             Cmd::FocusField => {
                 if let Some(w) = app.get_webview_window(LABEL) {
                     take_focus(&w);
@@ -399,6 +479,7 @@ fn closed(app: &AppHandle) {
     lk(&o.state).on_closed();
     lk(&o.history).clear();
     sound::stop();
+    live_teardown(app);
     if let Some(d) = lk(&o.listening).take() {
         std::thread::spawn(move || drop(d.stop()));
     }
@@ -482,7 +563,171 @@ fn read_aloud(app: &AppHandle, id: u64, key: &str, text: &str) {
     }
 }
 
+// ---- Gemini Live ----
+
+/// Starts the session for the game's screen, with the dim window under the panel. No key yet: the
+/// page shows the key card instead (it asks for typing mode).
+fn live_start(app: &AppHandle) {
+    let o = ov(app);
+    let Some(key) = keystore::get() else {
+        emit(app, "live", json!({ "state": "nokey" }));
+        let cmds = lk(&o.state).on_live_ended();
+        run(app, cmds);
+        return;
+    };
+    let s = app.state::<AppState>().with_bridge(|b| b.settings()).unwrap_or_default();
+    let front = *lk(&o.prev_front);
+    if let Some(w) = app.get_webview_window(LABEL) {
+        if let Ok(h) = w.hwnd() {
+            overlay_win::exclude_from_capture(h.0 as isize); // Gemini never sees the panel
+        }
+    }
+    open_dim(app, front);
+    let h = app.clone();
+    let session = LiveSession::start(
+        LiveConfig { key, voice: s.voice.clone(), listen: s.live_listen, monitor_of: front, play: true },
+        move |u| live_update(&h, u),
+    );
+    if std::mem::take(&mut *lk(&o.share_on_start)) {
+        session.set_sharing(true);
+        emit_dim(app, json!({ "sharing": true }));
+        emit(app, "live", json!({ "sharing": true }));
+    }
+    *lk(&o.live) = Some(session);
+}
+
+fn live_update(app: &AppHandle, u: LiveUpdate) {
+    let payload = match u {
+        LiveUpdate::Connecting => json!({ "state": "connecting" }),
+        LiveUpdate::Ready => json!({ "state": "listening" }),
+        LiveUpdate::Level { you, gemini } => json!({ "level_you": you, "level_gemini": gemini }),
+        LiveUpdate::YouSaid(t) => json!({ "you": t }),
+        LiveUpdate::GeminiSaid(t) => json!({ "gemini": t }),
+        LiveUpdate::TurnDone => json!({ "turn": true }),
+        LiveUpdate::Speaking(on) => json!({ "speaking": on }),
+        LiveUpdate::Ended(why) => {
+            emit(app, "live", json!({ "state": "ended", "error": why }));
+            let cmds = lk(&ov(app).state).on_live_ended();
+            run(app, cmds);
+            live_teardown(app);
+            return;
+        }
+    };
+    emit(app, "live", payload);
+}
+
+/// Closes everything Live opened. The session is dropped on its own thread: its drop waits for the
+/// session thread, which may be the one calling this.
+fn live_teardown(app: &AppHandle) {
+    let o = ov(app);
+    if let Some(s) = lk(&o.live).take() {
+        std::thread::spawn(move || drop(s));
+    }
+    *lk(&o.share_on_start) = false;
+    if let Some(w) = app.get_webview_window(DIM_LABEL) {
+        let _ = w.destroy();
+    }
+    if let Some(w) = app.get_webview_window(LABEL) {
+        if let Ok(h) = w.hwnd() {
+            overlay_win::include_in_capture(h.0 as isize);
+            overlay_win::round_region(h.0 as isize, None);
+        }
+        let _ = w.set_effects(None);
+    }
+}
+
+fn emit_dim(app: &AppHandle, payload: serde_json::Value) {
+    if let Some(w) = app.get_webview_window(DIM_LABEL) {
+        let _ = w.emit("dim", payload);
+    }
+}
+
+/// The dim (and, while sharing, the red frame) over the whole screen the game is on.
+fn open_dim(app: &AppHandle, front: isize) {
+    let h = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if h.get_webview_window(DIM_LABEL).is_some() {
+            return;
+        }
+        let (l, t, r, b) = overlay_win::monitor_rect(front).unwrap_or((0, 0, 1920, 1080));
+        let built = WebviewWindowBuilder::new(&h, DIM_LABEL, WebviewUrl::App("livedim.html".into()))
+            .title("Gemini Live")
+            .decorations(false)
+            .transparent(true)
+            .shadow(false)
+            .resizable(false)
+            .skip_taskbar(true)
+            .always_on_top(true)
+            .focused(false)
+            .visible(false)
+            .build();
+        match built {
+            Ok(w) => {
+                let _ = w.set_position(PhysicalPosition::new(l, t));
+                let _ = w.set_size(PhysicalSize::new((r - l) as u32, (b - t) as u32));
+                let _ = w.set_ignore_cursor_events(true);
+                if let Ok(hw) = w.hwnd() {
+                    overlay_win::set_no_activate(hw.0 as isize, true);
+                    overlay_win::exclude_from_capture(hw.0 as isize);
+                }
+                let _ = w.show();
+                if let Some(ovw) = h.get_webview_window(LABEL) {
+                    if let Ok(hw) = ovw.hwnd() {
+                        overlay_win::raise(hw.0 as isize); // the panel stays above its dim
+                    }
+                }
+            }
+            Err(e) => pad_core::log!("live dim window failed: {e}"),
+        }
+    });
+}
+
 // ---- commands called by overlay.js ----
+
+/// The pill's waveform button (`share` false) or "Share screen with Live" (`true`).
+#[tauri::command]
+pub fn live_start_cmd(app: AppHandle, share: bool) {
+    *lk(&ov(&app).share_on_start) = share;
+    let cmds = lk(&ov(&app).state).on_action(Action::LiveStart);
+    run(&app, cmds);
+}
+
+#[tauri::command]
+pub fn live_mute(app: AppHandle, on: bool) {
+    if let Some(s) = lk(&ov(&app).live).as_ref() {
+        s.set_muted(on);
+    }
+}
+
+#[tauri::command]
+pub fn live_share(app: AppHandle, on: bool) {
+    if let Some(s) = lk(&ov(&app).live).as_ref() {
+        s.set_sharing(on);
+    }
+    emit_dim(&app, json!({ "sharing": on }));
+}
+
+#[tauri::command]
+pub fn live_end(app: AppHandle) {
+    let cmds = lk(&ov(&app).state).on_end_live();
+    run(&app, cmds);
+}
+
+/// The Live panel's place in the window (logical px) and the glass setting: frosted glass (Windows'
+/// acrylic) behind the panel only, clipped to its rounded corners; Light glass has none.
+#[tauri::command]
+pub fn live_glass(window: tauri::WebviewWindow, rect: [f64; 4], radius: f64, frosted: bool) {
+    let Ok(h) = window.hwnd() else { return };
+    let scale = window.scale_factor().unwrap_or(1.0);
+    if frosted {
+        let p = |v: f64| (v * scale).round() as i32;
+        overlay_win::round_region(h.0 as isize, Some((p(rect[0]), p(rect[1]), p(rect[2]), p(rect[3]), p(radius))));
+        let _ = window.set_effects(tauri::window::EffectsBuilder::new().effect(tauri::window::Effect::Acrylic).build());
+    } else {
+        overlay_win::round_region(h.0 as isize, None);
+        let _ = window.set_effects(None);
+    }
+}
 
 /// A card was closed while it was being read: stop the voice.
 #[tauri::command]
@@ -713,9 +958,65 @@ mod tests {
         assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Open, Cmd::Capture(true)]);
     }
 
-    #[test]
-    fn double_tap_opens_typing_until_live_exists() {
+    fn ready() -> OverlayState {
         let mut s = OverlayState::default();
-        assert_eq!(s.on_action(Action::LiveStart), vec![Cmd::Open, Cmd::Capture(true)]);
+        s.on_action(Action::OverlayTap);
+        s.on_window_ready();
+        s
+    }
+
+    #[test]
+    fn double_tap_opens_live() {
+        let mut s = OverlayState::default();
+        assert_eq!(s.on_action(Action::LiveStart), vec![Cmd::Open]);
+        assert_eq!(s.on_window_ready(), vec![Cmd::Show(Mode::Live), Cmd::LiveStart]);
+        let mut s = ready(); // the pill is up for typing and holds the pad
+        assert_eq!(s.on_action(Action::LiveStart), vec![Cmd::Show(Mode::Live), Cmd::Capture(false), Cmd::LiveStart]);
+        assert_eq!(s.on_action(Action::LiveStart), vec![], "already live");
+    }
+
+    #[test]
+    fn tap_during_live_ends_it() {
+        let mut s = ready();
+        s.on_action(Action::LiveStart);
+        assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::LiveEnd, Cmd::Hide]);
+        assert!(!s.live());
+        assert_eq!(s.on_action(Action::OverlayTap), vec![Cmd::Show(Mode::Type), Cmd::Capture(true)], "a tap types again");
+    }
+
+    #[test]
+    fn hold_during_live_talks_over() {
+        let mut s = ready();
+        s.on_action(Action::LiveStart);
+        assert_eq!(s.on_action(Action::TalkStart), vec![Cmd::LiveTalk(true)]);
+        assert_eq!(s.on_action(Action::TalkEnd), vec![Cmd::LiveTalk(false)]);
+    }
+
+    #[test]
+    fn end_live_stops_everything() {
+        let mut s = ready();
+        s.on_action(Action::LiveStart);
+        assert_eq!(s.on_end_live(), vec![Cmd::LiveEnd, Cmd::Hide]);
+        assert_eq!(s.on_end_live(), vec![], "once");
+        s.on_action(Action::LiveStart);
+        s.on_closed();
+        assert!(!s.live());
+    }
+
+    #[test]
+    fn server_close_ends_live_with_a_message() {
+        let mut s = ready();
+        s.on_action(Action::LiveStart);
+        assert_eq!(s.on_live_ended(), vec![Cmd::Hide]);
+        assert!(!s.live());
+        assert_eq!(s.on_action(Action::LiveStart), vec![Cmd::Show(Mode::Live), Cmd::LiveStart], "can start again");
+    }
+
+    #[test]
+    fn pad_gone_does_not_end_live() {
+        let mut s = ready();
+        s.on_action(Action::LiveStart);
+        assert_eq!(s.on_pad_gone(), vec![]);
+        assert!(s.live());
     }
 }

@@ -46,14 +46,41 @@ pub fn exclude_from_capture(hwnd: isize) {
     }
 }
 
-/// A window that never takes clicks or focus (the Live dim and red frame over the game).
-pub fn click_through(hwnd: isize) {
-    use windows::Win32::UI::WindowsAndMessaging::{WS_EX_LAYERED, WS_EX_TRANSPARENT};
+/// Back into screen captures (after Live ends: the player's own screenshots should show the pill).
+pub fn include_in_capture(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_NONE};
     unsafe {
-        let h = HWND(hwnd as *mut _);
-        let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
-        let add = (WS_EX_TRANSPARENT.0 | WS_EX_LAYERED.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
-        SetWindowLongPtrW(h, GWL_EXSTYLE, ex | add);
+        let _ = SetWindowDisplayAffinity(HWND(hwnd as *mut _), WDA_NONE);
+    }
+}
+
+/// Puts a topmost window above the other topmost ones (the Live panel over its own dim), no focus.
+pub fn raise(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowPos, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE};
+    unsafe {
+        let _ = SetWindowPos(HWND(hwnd as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
+/// Clips a window to a rounded rectangle (client px: left, top, right, bottom, corner radius), or
+/// back to its full size with `None`. Keeps the frosted-glass backdrop inside the Live panel's corners.
+pub fn round_region(hwnd: isize, r: Option<(i32, i32, i32, i32, i32)>) {
+    use windows::Win32::Graphics::Gdi::{CreateRoundRectRgn, SetWindowRgn, HRGN};
+    unsafe {
+        let rgn = r.map(|(l, t, rt, b, rad)| CreateRoundRectRgn(l, t, rt + 1, b + 1, rad * 2, rad * 2));
+        let _ = SetWindowRgn(HWND(hwnd as *mut _), rgn.unwrap_or(HRGN::default()).into(), true);
+    }
+}
+
+/// The whole screen (physical px, taskbar included) showing `hwnd`.
+pub fn monitor_rect(hwnd: isize) -> Option<(i32, i32, i32, i32)> {
+    unsafe {
+        let mon = MonitorFromWindow(HWND(hwnd as *mut _), MONITOR_DEFAULTTONEAREST);
+        let mut mi = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        GetMonitorInfoW(mon, &mut mi).as_bool().then(|| {
+            let r: RECT = mi.rcMonitor;
+            (r.left, r.top, r.right, r.bottom)
+        })
     }
 }
 

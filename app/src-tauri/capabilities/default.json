@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Pad Companion main window, tray menu and Gemini overlay",
-  "windows": ["main", "traymenu", "overlay"],
+  "windows": ["main", "traymenu", "overlay", "livedim"],
   "permissions": ["core:default", "core:window:allow-start-dragging"]
 }

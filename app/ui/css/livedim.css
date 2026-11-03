@@ -1,0 +1,24 @@
+/* Live dim window (livedim.html): full screen, transparent, click-through. */
+
+@font-face {
+  font-family: "Google Sans Flex";
+  src: url("../assets/fonts/GoogleSansFlex.ttf") format("truetype");
+  font-weight: 100 1000;
+  font-display: block;
+}
+
+html, body { margin: 0; width: 100%; height: 100%; background: transparent; overflow: hidden; user-select: none; }
+body { font: 400 14px/1.4 "Google Sans Flex", system-ui, sans-serif; color: #e3e3e8; }
+
+#dim { position: fixed; inset: 0; background: radial-gradient(70% 70% at 50% 75%, rgba(4, 5, 9, .35), rgba(4, 5, 9, .78)); opacity: 0; transition: opacity .45s ease-out; }
+body.on #dim { opacity: 1; }
+/* Eases off: strong as Live opens, then light after 2 s so the game stays playable. */
+body.on.ease #dim { opacity: .45; transition: opacity 1.2s ease-in-out 2s; }
+
+#frame { position: fixed; inset: 0; box-shadow: inset 0 0 0 3px rgba(242, 139, 130, .85); opacity: 0; transition: opacity .3s; }
+body.sharing #frame { opacity: 1; }
+
+#chip { position: fixed; top: 16px; left: 50%; translate: -50% -80px; display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 16px; border-radius: 99px;
+  background: #1d2129; box-shadow: 0 8px 24px rgba(0, 0, 0, .5); transition: translate .5s linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1.004 83.8%, 1); }
+#chip i { width: 8px; height: 8px; border-radius: 50%; background: #f28b82; }
+body.sharing #chip { translate: -50% 0; }
