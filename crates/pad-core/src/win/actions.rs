@@ -45,7 +45,7 @@ fn chord(keys: &[VIRTUAL_KEY]) -> Vec<INPUT> {
     keys.iter().map(|&k| key(k, false)).chain(keys.iter().rev().map(|&k| key(k, true))).collect()
 }
 
-fn send_chord(keys: &[VIRTUAL_KEY]) {
+pub fn send_chord(keys: &[VIRTUAL_KEY]) {
     let inputs = chord(keys);
     let sent = unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) };
     if sent as usize != inputs.len() {

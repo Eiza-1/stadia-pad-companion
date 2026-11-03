@@ -3,6 +3,7 @@ pub mod gate;
 pub mod gemini;
 pub mod hotkey;
 pub mod mapping;
+pub mod pccmd;
 pub mod report;
 pub mod rumble;
 pub mod settings;

@@ -339,6 +339,7 @@ fn style(app: &AppHandle) -> serde_json::Value {
 fn open(app: &AppHandle) {
     let o = ov(app);
     *lk(&o.width) = 0.0;
+    pad_core::win::apps::warm();
     *lk(&o.prev_front) = overlay_win::foreground();
     *lk(&o.anchor) = app.state::<AppState>().with_bridge(|b| b.settings().overlay_pos).flatten();
     // If the page never reports ready (WebView2 fault), don't keep the pad from games.
@@ -421,6 +422,19 @@ fn ask(app: &AppHandle, text: String) {
         h.clone()
     };
     emit(app, "answer", json!({ "id": id, "question": text }));
+    // PC commands ("open Spotify", "volume up") run here at once; Gemini can't touch the PC.
+    if let Some(cmd) = pad_core::pccmd::parse(&text) {
+        lk(&o.history).pop();
+        let h = app.clone();
+        std::thread::spawn(move || match pad_core::win::apps::run(&cmd) {
+            Ok(line) => {
+                emit(&h, "answer", json!({ "id": id, "delta": line }));
+                emit(&h, "answer", json!({ "id": id, "done": true }));
+            }
+            Err(e) => emit(&h, "answer", json!({ "id": id, "error": e })),
+        });
+        return;
+    }
     let h = app.clone();
     let _ = std::thread::Builder::new().name("gemini-ask".into()).spawn(move || {
         let Some(key) = keystore::get() else {
