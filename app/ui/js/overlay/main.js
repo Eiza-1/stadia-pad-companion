@@ -2,7 +2,7 @@
 // shows the window without taking focus. Modes come from the Assistant button / shortcut ("ov_mode"),
 // live words from dictation ("stt"), answers from Gemini ("answer"), the pad while we hold it ("pad").
 
-import { createStack } from "./cards.js";
+import { createStack, isLong } from "./cards.js";
 import { attach } from "./orbit-view.js";
 
 const tauri = window.__TAURI__;
@@ -150,7 +150,10 @@ listen("answer", (a) => {
   if (a.question != null) stack.add(a.id, a.question);
   else if (a.delta) stack.append(a.id, a.delta);
   else if (a.done) stack.done(a.id);
-  else if (a.speaking != null) stack.speaking(a.id, a.speaking);
+  else if (a.speaking != null) {
+    stack.speaking(a.id);
+    setTimeout(() => { const c = stack.cards.find((k) => k.id === a.id); if (c) { c.voice = false; drawCards(); } }, a.speaking);
+  }
   else if (a.voice_error) stack.voiceError(a.id, a.voice_error);
   else if (a.error === "nokey") {
     stack.close(a.id);
@@ -171,12 +174,25 @@ function drawCards() {
       q.append(document.createElement("i"), c.question);
       const a = document.createElement("div");
       a.className = "a";
-      if (voice === "Voice" && !c.error && !c.voiceError && c.dueAt != null) {
-        a.innerHTML = `<span class="speaking">${c.voice ? "Speaking…" : "Getting the voice…"}</span>`;
-      } else a.textContent = c.error || c.text;
+      a.textContent = c.error || c.text;
       const note = document.createElement("div");
       note.className = "vnote";
       if (c.voiceError && voice !== "Text") note.textContent = `Voice: ${c.voiceError}`;
+      else if (c.voice) note.textContent = "🔊 Speaking…";
+      else if (voice !== "Text" && c.done && !c.error && !c.voiceSeen) note.textContent = "Getting the voice…";
+      if (c.voice) c.voiceSeen = true;
+      // Long answers: the first lines with a fade, and Show more / Show less (the card stays until closed).
+      const long = !c.error && isLong(c.text);
+      el.classList.toggle("long", long);
+      el.classList.toggle("open", long && c.open);
+      let more = null;
+      if (long) {
+        more = document.createElement("button");
+        more.type = "button";
+        more.className = "more";
+        more.innerHTML = c.open ? 'Show less <span aria-hidden="true">▴</span>' : 'Show more <span aria-hidden="true">▾</span>';
+        more.onclick = () => { stack.toggle(c.id); drawCards(); };
+      }
       const x = document.createElement("button");
       x.className = "x";
       x.type = "button";
@@ -187,20 +203,12 @@ function drawCards() {
         stack.close(c.id);
         drawCards();
       };
-      const bar = document.createElement("div");
-      bar.className = "bar";
-      if (c.dueAt != null) {
-        const left = Math.max(0, c.dueAt - Date.now());
-        bar.animate([{ transform: "scaleX(1)" }, { transform: "scaleX(0)" }], { duration: left, fill: "forwards" });
-      }
-      el.append(q, a, note, x, bar);
+      el.append(q, a, ...(more ? [more] : []), note, x);
       return el;
     }),
   );
   idleCheck();
 }
-
-setInterval(() => { if (stack.expire().length) drawCards(); }, 250);
 
 // Nothing on screen for 20 s: close the window, so nothing of the overlay keeps running.
 let idleTimer;
