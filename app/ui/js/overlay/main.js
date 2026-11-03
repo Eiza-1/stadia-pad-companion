@@ -16,7 +16,7 @@ let mode = "hidden";
 let keyOk = false;
 let typingBefore = "";
 let prevPad = ""; // last pad buttons seen, for press edges
-const keyboard = { onPad: null, onShow: null, onHide: null }; // filled by the Orbit rail (orbit-view.js)
+const keyboard = { onPad: null, onShow: null, onHide: null, learn: null }; // filled by the Orbit rail (orbit-view.js)
 export { keyboard };
 
 // ---------- sizing: the window follows the content, bottom edge fixed ----------
@@ -81,6 +81,7 @@ export function send() {
   if (!keyOk) return setMode(mode); // shows the key card
   $("field").value = "";
   fit();
+  keyboard.learn?.(text); // suggestions get better with what the player asks
   invoke("overlay_ask", { text });
 }
 

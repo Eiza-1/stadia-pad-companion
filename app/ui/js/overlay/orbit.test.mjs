@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createOrbit, suggest, PAGES } from "./orbit.js";
+import { createOrbit, PAGES } from "./orbit.js";
+import { createPredictor } from "./predict.js";
+
+const mem = () => { let v = null; return { get: () => v, set: (x) => (v = x) }; };
+const fresh = () => createOrbit({ predictor: createPredictor({ store: mem() }) });
 
 test("starts on letters at t; right glides, A types, B deletes, X spaces", () => {
-  const o = createOrbit();
+  const o = fresh();
   assert.equal(o.state.page, "abc");
   assert.equal(o.state.focus, "t");
   o.input("right");
@@ -18,7 +22,7 @@ test("starts on letters at t; right glides, A types, B deletes, X spaces", () =>
 });
 
 test("wraps around at both ends", () => {
-  const o = createOrbit();
+  const o = fresh();
   while (o.state.focus !== "a") o.input("left");
   o.input("left");
   assert.equal(o.state.focus, "z");
@@ -27,17 +31,16 @@ test("wraps around at both ends", () => {
 });
 
 test("Y takes the first suggestion for the word being typed", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "how do i beat the wa";
-  const first = suggest("wa")[0];
+  const first = o.state.suggestions[0];
   assert.ok(first && first.startsWith("wa") && first.length > 2, "a real word for 'wa'");
-  assert.equal(o.state.suggestions[0], first);
   o.input("Y");
   assert.equal(o.text, `how do i beat the ${first} `);
 });
 
 test("bumpers switch letters, numbers, emoji", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.input("RB");
   assert.equal(o.state.page, "123");
   o.input("RB");
@@ -51,7 +54,7 @@ test("bumpers switch letters, numbers, emoji", () => {
 });
 
 test("L3 toggles caps for letters", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.input("L3");
   o.input("A");
   assert.equal(o.text, "T");
@@ -61,26 +64,40 @@ test("L3 toggles caps for letters", () => {
 });
 
 test("emoji count as one character for B", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "gg 🔥";
   o.input("B");
   assert.equal(o.text, "gg ");
 });
 
 test("Menu sends the text", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "combo?";
   assert.deepEqual(o.input("MENU"), { send: "combo?" });
 });
 
-test("suggest is case-insensitive, prefix-based and limited", () => {
-  assert.ok(suggest("Bo").every((w) => w.startsWith("bo")));
-  assert.ok(suggest("b").length <= 4);
-  assert.deepEqual(suggest(""), []);
+test("after a space Y takes the predicted next word; an emoji suggestion is added after the word", () => {
+  const o = fresh();
+  o.text = "how do ";
+  const next = o.state.suggestions[0];
+  o.input("Y");
+  assert.equal(o.text, `how do ${next} `);
+  o.text = "that was fire";
+  const i = o.state.suggestions.indexOf("🔥");
+  assert.ok(i >= 0, "fire -> 🔥");
+  o.pick(i);
+  assert.equal(o.text, "that was fire 🔥 ");
+});
+
+test("sending teaches the keyboard", () => {
+  const o = fresh();
+  for (let k = 0; k < 3; k++) o.learn("radahn meteor");
+  o.text = "rad";
+  assert.equal(o.state.suggestions[0], "radahn");
 });
 
 test("D-pad down and up choose among suggestions; Y takes the chosen one", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "the wa";
   const s = o.state.suggestions;
   assert.ok(s.length >= 3, "several words for 'wa'");
@@ -95,7 +112,7 @@ test("D-pad down and up choose among suggestions; Y takes the chosen one", () =>
 });
 
 test("the choice stays within the list and resets when the word changes", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "wa";
   const n = o.state.suggestions.length;
   for (let i = 0; i < 10; i++) o.input("down");
@@ -111,7 +128,7 @@ test("the choice stays within the list and resets when the word changes", () => 
 });
 
 test("pick(i) takes a clicked suggestion", () => {
-  const o = createOrbit();
+  const o = fresh();
   o.text = "the wa";
   const s = o.state.suggestions;
   o.pick(2);

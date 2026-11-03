@@ -3,7 +3,7 @@
 // (40 ms past 85 % stick deflection). Suggestions: D-pad up / down chooses, Y takes it; a click or Tab
 // (Up / Down in the field) does the same from the mouse and keyboard.
 
-import { createOrbit, PAGES } from "./orbit.js";
+import { createOrbit } from "./orbit.js";
 
 const SPAN = 7; // characters shown each side of the focus key
 const FIRST_MS = 320, REPEAT_MS = 70, FAST_MS = 40, FAST_AT = 0.85, DEAD = 0.5;
@@ -22,7 +22,7 @@ export function attach({ box, field, fit, send, keyboard }) {
   function draw() {
     if (!shown) return box.replaceChildren();
     const st = orbit.state;
-    const chars = PAGES[st.page];
+    const chars = st.chars;
     const row = document.createElement("div");
     row.className = "rail glass";
     for (let d = -SPAN; d <= SPAN; d++) {
@@ -101,6 +101,7 @@ export function attach({ box, field, fit, send, keyboard }) {
     draw();
   });
 
+  keyboard.learn = (t) => orbit.learn(t);
   keyboard.onShow = () => {
     shown = true;
     orbit.text = field.value;
