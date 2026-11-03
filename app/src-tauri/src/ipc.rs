@@ -24,8 +24,9 @@ pub fn get_settings(state: State<'_, AppState>) -> Settings {
 }
 
 #[tauri::command]
-pub fn set_settings(state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
+pub fn set_settings(app: tauri::AppHandle, state: State<'_, AppState>, mut settings: Settings) -> Result<(), String> {
     let before = get_settings(state.clone());
+    settings.overlay_scale = Settings::clamp_scale(settings.overlay_scale);
     // Owned by the overlay (drag) and its own commands, not by a window's copy of the settings.
     settings.overlay_pos = before.overlay_pos;
     settings.overlay_hotkey = before.overlay_hotkey; // changed only through set_overlay_hotkey
@@ -33,7 +34,11 @@ pub fn set_settings(state: State<'_, AppState>, mut settings: Settings) -> Resul
         autostart::set(settings.start_with_windows);
     }
     settings.save(&state.settings_path).map_err(|e| e.to_string())?;
+    let restyle = before.overlay_scale != settings.overlay_scale || before.overlay_anim != settings.overlay_anim;
     state.with_bridge(|b| b.update_settings(settings));
+    if restyle {
+        crate::overlay::restyle(&app); // an open pill resizes while the slider moves
+    }
     Ok(())
 }
 

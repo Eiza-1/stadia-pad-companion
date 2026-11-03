@@ -207,8 +207,9 @@ use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindowBuilder, WindowEvent};
 
 pub const LABEL: &str = "overlay";
-/// Window width in logical px (overlay.css lays out for this); the height follows the content.
-const WIDTH: f64 = 760.0;
+/// Window width in logical px before the page reports its own (it follows the pill size setting:
+/// 720 at Standard, the 600 px pill plus room for its glow); the height follows the content.
+const WIDTH: f64 = 720.0;
 /// Gap between the window's bottom edge and the taskbar, logical px.
 const GAP: f64 = 24.0;
 
@@ -222,6 +223,8 @@ pub struct Overlay {
     /// Bottom-centre anchor of the window (physical px).
     anchor: Mutex<Option<(i32, i32)>>,
     next_id: Mutex<u64>,
+    /// Width the page asked for (logical px); 0 = not reported yet.
+    width: Mutex<f64>,
 }
 
 fn lk<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -310,7 +313,8 @@ fn capture(app: &AppHandle, on: bool) {
 fn place(app: &AppHandle, w: &tauri::WebviewWindow, height_logical: f64) {
     let o = ov(app);
     let scale = w.scale_factor().unwrap_or(1.0);
-    let (pw, ph) = ((WIDTH * scale).round() as i32, (height_logical * scale).round() as i32);
+    let width = Some(*lk(&o.width)).filter(|&v| v > 0.0).unwrap_or(WIDTH);
+    let (pw, ph) = ((width * scale).round() as i32, (height_logical * scale).round() as i32);
     let anchor = (*lk(&o.anchor)).filter(|&(x, y)| overlay_win::on_screen(x, y - 1));
     let (cx, bottom) = anchor.unwrap_or_else(|| {
         let front = *lk(&o.prev_front);
@@ -321,8 +325,19 @@ fn place(app: &AppHandle, w: &tauri::WebviewWindow, height_logical: f64) {
     let _ = w.set_position(PhysicalPosition::new(cx - pw / 2, bottom - ph));
 }
 
+/// Pill size / animation changed in Settings: an open overlay redraws (and reports its new size).
+pub fn restyle(app: &AppHandle) {
+    emit(app, "ov_style", style(app));
+}
+
+fn style(app: &AppHandle) -> serde_json::Value {
+    let s = app.state::<AppState>().with_bridge(|b| b.settings()).unwrap_or_default();
+    json!({ "scale": s.overlay_scale, "anim": s.overlay_anim, "accent": overlay_win::accent() })
+}
+
 fn open(app: &AppHandle) {
     let o = ov(app);
+    *lk(&o.width) = 0.0;
     *lk(&o.prev_front) = overlay_win::foreground();
     *lk(&o.anchor) = app.state::<AppState>().with_bridge(|b| b.settings().overlay_pos).flatten();
     // If the page never reports ready (WebView2 fault), don't keep the pad from games.
@@ -427,9 +442,22 @@ fn ask(app: &AppHandle, text: String) {
 
 // ---- commands called by overlay.js ----
 
-/// The page has drawn itself at `height` (logical px): size, place and show without focus.
+fn set_width(app: &AppHandle, width: Option<f64>) {
+    if let Some(w) = width.filter(|w| w.is_finite() && *w >= 200.0 && *w <= 2000.0) {
+        *lk(&ov(app).width) = w;
+    }
+}
+
+/// Pill size, animation and the Windows accent colour for the page.
 #[tauri::command]
-pub fn overlay_ready(app: AppHandle, window: tauri::WebviewWindow, height: f64) {
+pub fn overlay_style(app: AppHandle) -> serde_json::Value {
+    style(&app)
+}
+
+/// The page has drawn itself at `width` x `height` (logical px): size, place and show without focus.
+#[tauri::command]
+pub fn overlay_ready(app: AppHandle, window: tauri::WebviewWindow, height: f64, width: Option<f64>) {
+    set_width(&app, width);
     place(&app, &window, height);
     let _ = window.show();
     let cmds = lk(&ov(&app).state).on_window_ready();
@@ -438,7 +466,8 @@ pub fn overlay_ready(app: AppHandle, window: tauri::WebviewWindow, height: f64) 
 
 /// The content changed height: resize, keeping the bottom edge where it is.
 #[tauri::command]
-pub fn overlay_resize(app: AppHandle, window: tauri::WebviewWindow, height: f64) {
+pub fn overlay_resize(app: AppHandle, window: tauri::WebviewWindow, height: f64, width: Option<f64>) {
+    set_width(&app, width);
     place(&app, &window, height);
 }
 

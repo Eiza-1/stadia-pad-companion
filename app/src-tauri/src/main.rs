@@ -160,6 +160,7 @@ fn main() {
             ipc::gemini_open_studio,
             overlay::overlay_ready,
             overlay::overlay_resize,
+            overlay::overlay_style,
             overlay::overlay_ask,
             overlay::overlay_capture,
             overlay::overlay_close,

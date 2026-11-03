@@ -48,6 +48,15 @@ pub enum AnswerVoice {
     Both,
 }
 
+/// How the pill appears: the Google glow that gathers into the pill, a quick fade, or no animation.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum OverlayAnim {
+    #[default]
+    Glow,
+    Fade,
+    Off,
+}
+
 fn not_migrated() -> bool {
     false
 }
@@ -183,6 +192,9 @@ pub struct Settings {
     pub overlay_pos: Option<(i32, i32)>,
     /// Keyboard shortcut for the overlay (tap = type, hold = talk); `None` = off.
     pub overlay_hotkey: Option<crate::hotkey::Hotkey>,
+    /// Pill size: 1.0 = Standard (600 x 64 px), kept within 0.7..=1.4.
+    pub overlay_scale: f32,
+    pub overlay_anim: OverlayAnim,
 }
 
 impl Default for Settings {
@@ -203,6 +215,8 @@ impl Default for Settings {
             overlay_intro_seen: false,
             overlay_pos: None,
             overlay_hotkey: Some(crate::hotkey::Hotkey::default()),
+            overlay_scale: 1.0,
+            overlay_anim: OverlayAnim::Glow,
         }
     }
 }
@@ -227,7 +241,13 @@ impl Settings {
         s
     }
 
+    /// Pill size within 0.7..=1.4 (Standard if the value is not a number).
+    pub fn clamp_scale(v: f32) -> f32 {
+        if v.is_finite() { v.clamp(0.7, 1.4) } else { 1.0 }
+    }
+
     fn normalize(&mut self) {
+        self.overlay_scale = Self::clamp_scale(self.overlay_scale);
         if !self.overlay_migrated {
             if self.assistant == AssistantAction::Gemini {
                 self.assistant = AssistantAction::Overlay;
@@ -347,5 +367,24 @@ mod tests {
     fn dangling_active_profile_falls_back() {
         let p = write_tmp(r#"{"active_profile":"Gone","profiles":[]}"#);
         assert_eq!(Settings::load(&p).active().name, "Default");
+    }
+
+    #[test]
+    fn pill_defaults_to_standard_size_and_glow() {
+        let s = Settings::default();
+        assert_eq!(s.overlay_scale, 1.0);
+        assert_eq!(s.overlay_anim, OverlayAnim::Glow);
+    }
+
+    #[test]
+    fn pill_size_is_kept_in_range() {
+        assert_eq!(Settings::clamp_scale(0.2), 0.7);
+        assert_eq!(Settings::clamp_scale(3.0), 1.4);
+        assert_eq!(Settings::clamp_scale(f32::NAN), 1.0);
+        assert_eq!(Settings::clamp_scale(1.2), 1.2);
+        let p = write_tmp(r#"{"overlay_scale":9.0,"overlay_anim":"Fade"}"#);
+        let s = Settings::load(&p);
+        assert_eq!(s.overlay_scale, 1.4);
+        assert_eq!(s.overlay_anim, OverlayAnim::Fade);
     }
 }

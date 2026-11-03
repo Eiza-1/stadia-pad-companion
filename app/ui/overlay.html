@@ -9,6 +9,7 @@
 <body>
   <!-- The Gemini overlay (overlay.rs). The window is transparent; only these shapes are visible. -->
   <main id="ov">
+    <i class="glow" aria-hidden="true"></i>
     <section id="cards" aria-live="polite"></section>
 
     <section id="keycard" class="glass card setup" hidden>
@@ -16,7 +17,7 @@
       <p>Gemini answers come from your own free key from Google AI Studio. It's saved only on this PC.</p>
       <p class="fine">The free tier has limits, and on the free tier Google may use what you send to improve its products, so don't share a screen with private things on it.</p>
       <div class="keyrow">
-        <input id="keyIn" type="password" placeholder="Paste your key (AIza…)" autocomplete="off" spellcheck="false">
+        <input id="keyIn" type="password" placeholder="Paste your key" autocomplete="off" spellcheck="false">
         <button id="keyPaste" class="ghost" type="button">Paste</button>
       </div>
       <div class="keyacts">
@@ -31,18 +32,22 @@
         <svg viewBox="0 0 32 32" aria-hidden="true"><rect x="3" y="6" width="26" height="20" rx="5"/><path d="M16 21v-9M12 15.5l4-4 4 4"/></svg>
         <span>Share screen with Live</span>
       </button>
+      <div id="pillbox">
+        <i class="aura" aria-hidden="true"></i>
       <div id="pill" class="glass pill">
+        <div class="rip" aria-hidden="true"><i></i><i></i><i></i></div>
         <div class="handle" id="handle" title="Drag to move"></div>
         <button id="plus" class="icon" type="button" aria-label="More">
-          <svg viewBox="0 0 34 34" aria-hidden="true"><path d="M17 3v28M3 17h28"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v16M4 12h16"/></svg>
         </button>
         <input id="field" class="field" placeholder="Ask Gemini" autocomplete="off" spellcheck="false" aria-label="Ask Gemini">
         <button id="mic" class="mic" type="button" aria-label="Talk">
-          <svg viewBox="0 0 40 40" aria-hidden="true"><rect x="14" y="5" width="12" height="20" rx="6"/><path d="M8 19a12 12 0 0 0 24 0M20 31v5"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
         </button>
         <button id="live" class="icon" type="button" aria-label="Talk live">
-          <svg viewBox="0 0 40 40" aria-hidden="true"><path d="M6 16v8M13 11v18M20 5v30M27 11v18M34 16v8"/></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
         </button>
+      </div>
       </div>
       <p id="hint" class="hint" role="status"></p>
       <div id="kb"></div>

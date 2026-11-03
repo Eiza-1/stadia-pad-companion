@@ -2,9 +2,12 @@
 // logs, version, drivers.
 
 import { settings, status, save, onSettings, onStatus, invoke, appInfo } from "../ipc.js";
-import { h, toggle, panel, seg } from "../ui.js";
+import { h, toggle, panel, seg, slider } from "../ui.js";
 
-let start, hide, kv, voiceSeg;
+let start, hide, kv, voiceSeg, sizeSlider, sizeSeg, animSeg;
+const SIZES = [{ value: 82, label: "Compact" }, { value: 100, label: "Standard" }, { value: 120, label: "Large" }];
+const pct = () => Math.round((settings.overlay_scale ?? 1) * 100);
+const quick = (p) => (SIZES.some((o) => o.value === p) ? p : null);
 
 export function init(el) {
   el.innerHTML = `<h1>Other settings</h1><p class="lede">Pad Companion keeps running in the tray when you close this window, so the controller keeps working. To quit, right-click the tray icon and choose Quit.</p>`;
@@ -26,16 +29,23 @@ export function init(el) {
   el.append(grid);
 
   appInfo().then((i) => { kv.dataset.version = i.version; renderAbout(); });
-  onSettings(() => { start.set(settings.start_with_windows); hide.set(settings.hide_from_games); voiceSeg.set(settings.answer_voice); });
+  onSettings(() => {
+    start.set(settings.start_with_windows);
+    hide.set(settings.hide_from_games);
+    voiceSeg.set(settings.answer_voice);
+    sizeSlider.set(pct());
+    sizeSeg.set(quick(pct()));
+    animSeg.set(settings.overlay_anim || "Glow");
+  });
   onStatus(renderAbout);
   renderAbout();
 }
 
-/** Your Gemini key (saved only on this PC), how answers are given, and the overlay's position. */
+/** Your Gemini key (saved only on this PC), how answers are given, the pill's size, entrance and position. */
 function geminiPanel() {
   const g = panel("Gemini", "auto_awesome");
   const keyRow = h(`<div class="srow"><span class="stext"><b>Your Gemini key</b><small></small></span><span class="keybtns"></span></div>`);
-  const form = h(`<div class="keyform" hidden><input type="password" placeholder="Paste your key (AIza…)" autocomplete="off" spellcheck="false"><button class="btn tonal">Save</button><button class="btn text">Get a free key</button></div>`);
+  const form = h(`<div class="keyform" hidden><input type="password" placeholder="Paste your key" autocomplete="off" spellcheck="false"><button class="btn tonal">Save</button><button class="btn text">Get a free key</button></div>`);
   const msg = h(`<div class="note-box info" hidden><span class="ms">info</span><span></span></div>`);
   const say = (text, err = false) => {
     msg.hidden = !text;
@@ -80,10 +90,22 @@ function geminiPanel() {
     settings.answer_voice, (v) => save((s) => (s.answer_voice = v)));
   voiceRow.append(voiceSeg);
 
+  // Pill size: an open overlay resizes as the slider moves (set_settings tells it).
+  const sizeRow = h(`<div class="srow col"><span class="stext"><b>Pill size</b><small>Standard is 600 × 64 px on a 1080p screen. The keyboard and answers follow it.</small></span></div>`);
+  const setSize = (p) => save((s) => (s.overlay_scale = p / 100));
+  sizeSlider = slider({ label: "Size", min: 70, max: 140, step: 5, value: pct(), onInput: (p) => { sizeSeg.set(quick(p)); setSize(p); } });
+  sizeSeg = seg(SIZES, quick(pct()), (p) => { sizeSlider.set(p); setSize(p); });
+  sizeRow.append(sizeSlider, sizeSeg);
+
+  const animRow = h(`<div class="srow col"><span class="stext"><b>Entrance animation</b><small>How the pill appears. Simple fade or Off suits slower PCs, or if the glow distracts you mid-game.</small></span></div>`);
+  animSeg = seg([{ value: "Glow", label: "Glow" }, { value: "Fade", label: "Simple fade" }, { value: "Off", label: "Off" }],
+    settings.overlay_anim || "Glow", (v) => save((s) => (s.overlay_anim = v)));
+  animRow.append(animSeg);
+
   const posRow = h(`<div class="srow"><span class="stext"><b>Overlay position</b><small>Drag the pill by its handle to move it. This puts it back at the bottom centre.</small></span><button class="btn text">Reset</button></div>`);
   posRow.querySelector("button").onclick = () => invoke("overlay_reset_pos").then(() => say("The overlay opens at the bottom centre again."));
 
-  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, posRow);
+  g.append(keyRow, form, msg, shortcutRow(say), voiceRow, sizeRow, animRow, posRow);
   render();
   return g;
 }

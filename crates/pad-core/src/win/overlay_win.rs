@@ -11,6 +11,32 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOOLWINDOW,
 };
 
+/// The Windows accent colour as `#rrggbb` (Settings > Personalisation > Colours), if set.
+pub fn accent() -> Option<String> {
+    use windows::core::w;
+    use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    let mut v = 0u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let r = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!(r"Software\Microsoft\Windows\DWM"),
+            w!("AccentColor"),
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut v as *mut u32 as *mut _),
+            Some(&mut size),
+        )
+    };
+    r.is_ok().then(|| accent_hex(v))
+}
+
+/// DWM stores the accent as 0xAABBGGRR.
+pub fn accent_hex(abgr: u32) -> String {
+    let (r, g, b) = (abgr & 0xff, (abgr >> 8) & 0xff, (abgr >> 16) & 0xff);
+    format!("#{r:02x}{g:02x}{b:02x}")
+}
+
 /// The window in front right now (as a plain number, so it can be kept and sent between threads).
 pub fn foreground() -> isize {
     unsafe { GetForegroundWindow().0 as isize }
@@ -53,6 +79,12 @@ pub fn focus(hwnd: isize) {
 mod tests {
     use super::*;
     use windows::Win32::UI::WindowsAndMessaging::{GetSystemMetrics, SM_CXSCREEN, SM_CYSCREEN};
+
+    #[test]
+    fn dwm_accent_is_read_as_rgb() {
+        assert_eq!(accent_hex(0xffd77800), "#0078d7");
+        assert_eq!(accent_hex(0x00112233), "#332211");
+    }
 
     #[test]
     fn a_spot_on_an_unplugged_screen_is_not_on_screen() {

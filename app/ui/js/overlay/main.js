@@ -20,13 +20,36 @@ const keyboard = { onPad: null, onShow: null, onHide: null }; // filled by the O
 export { keyboard };
 
 // ---------- sizing: the window follows the content, bottom edge fixed ----------
+// overlay.css lays out at Standard size in 720 px; the pill size setting zooms it (--s).
+const BASE_WIDTH = 720;
 let ready = false;
+let scale = 1;
 const height = () => Math.ceil(document.getElementById("ov").getBoundingClientRect().height) + 2;
-new ResizeObserver(() => ready && invoke("overlay_resize", { height: height() })).observe($("ov"));
+const size = () => ({ height: height(), width: Math.ceil(BASE_WIDTH * scale) });
+const report = () => ready && invoke("overlay_resize", size());
+new ResizeObserver(report).observe($("ov"));
+
+/** Pill size, entrance animation and the Windows accent colour (Settings › Gemini, live). */
+function applyStyle(st) {
+  scale = Math.min(1.4, Math.max(0.7, Number(st.scale) || 1));
+  document.documentElement.style.setProperty("--s", String(scale));
+  if (st.accent) document.documentElement.style.setProperty("--accent", st.accent);
+  document.body.dataset.anim = st.anim || "Glow";
+  report();
+}
+
+/** Plays the entrance each time the pill comes up. */
+function enter() {
+  document.body.classList.remove("enter");
+  void document.body.offsetWidth; // restart the animations
+  document.body.classList.add("enter");
+}
 
 // ---------- the pill ----------
 function setMode(m) {
   if (m !== mode) prevPad = ""; // a fresh start for pad edges
+  if (mode === "hidden" && m !== "hidden") enter();
+  if (m === "hidden") document.body.classList.remove("enter");
   mode = m;
   document.body.classList.toggle("talk", m === "talk");
   const showPill = m !== "hidden";
@@ -90,7 +113,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && document.activeElement !== $("field")) close();
 });
 $("mic").onclick = () => hint("Hold the Assistant button (or your shortcut) and speak");
-for (const id of ["plus", "live", "share"]) $(id).onclick = () => hint("Coming soon: Circle to Search and Gemini Live");
+$("plus").onclick = () => hint("Coming soon: add files and search your PC");
+for (const id of ["live", "share"]) $(id).onclick = () => hint("Coming soon: Gemini Live and Circle to Search");
 
 // Dragging by the handle; the new spot is remembered once the window stops moving. Only a real drag
 // counts: the window also moves whenever its height changes (overlay.rs keeps the bottom edge put).
@@ -225,14 +249,16 @@ listen("pad", (s) => {
 
 // ---------- boot ----------
 async function boot() {
-  const [settings, ok] = await Promise.all([invoke("get_settings"), invoke("gemini_key_status")]);
+  const [settings, ok, style] = await Promise.all([invoke("get_settings"), invoke("gemini_key_status"), invoke("overlay_style")]);
   voice = settings.answer_voice || "Text";
   keyOk = ok;
+  applyStyle(style);
+  await listen("ov_style", applyStyle);
   attach({ box: $("kb"), field: $("field"), fit, send, keyboard });
   await document.fonts.ready;
   await listen("ov_mode", (m) => setMode(m.mode));
   ready = true;
-  await invoke("overlay_ready", { height: height() });
+  await invoke("overlay_ready", size());
 }
 
 boot();

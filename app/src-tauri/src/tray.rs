@@ -131,7 +131,7 @@ pub fn tray_set_autostart(app: AppHandle, state: tauri::State<'_, crate::AppStat
         return Ok(());
     }
     s.start_with_windows = on;
-    crate::ipc::set_settings(state, s)?;
+    crate::ipc::set_settings(app.clone(), state, s)?;
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.emit("autostart", on);
     }
