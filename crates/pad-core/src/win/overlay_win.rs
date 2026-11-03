@@ -37,6 +37,26 @@ pub fn accent_hex(abgr: u32) -> String {
     format!("#{r:02x}{g:02x}{b:02x}")
 }
 
+/// Keeps a window out of every screen capture (Share screen, screenshots, recordings), so Gemini
+/// never sees Pad Companion's own Live panel, dim or red frame. Windows 10 2004+.
+pub fn exclude_from_capture(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE};
+    unsafe {
+        let _ = SetWindowDisplayAffinity(HWND(hwnd as *mut _), WDA_EXCLUDEFROMCAPTURE);
+    }
+}
+
+/// A window that never takes clicks or focus (the Live dim and red frame over the game).
+pub fn click_through(hwnd: isize) {
+    use windows::Win32::UI::WindowsAndMessaging::{WS_EX_LAYERED, WS_EX_TRANSPARENT};
+    unsafe {
+        let h = HWND(hwnd as *mut _);
+        let ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+        let add = (WS_EX_TRANSPARENT.0 | WS_EX_LAYERED.0 | WS_EX_NOACTIVATE.0 | WS_EX_TOOLWINDOW.0) as isize;
+        SetWindowLongPtrW(h, GWL_EXSTYLE, ex | add);
+    }
+}
+
 /// The window in front right now (as a plain number, so it can be kept and sent between threads).
 pub fn foreground() -> isize {
     unsafe { GetForegroundWindow().0 as isize }

@@ -16,6 +16,7 @@ pub mod speech;
 pub mod sound;
 pub mod apps;
 pub mod audio;
+pub mod screen;
 
 /// Joins the COM multithreaded apartment on the calling thread (WinRT calls and blocking `.get()`).
 pub fn com_mta() {
