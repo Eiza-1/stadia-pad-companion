@@ -26,6 +26,60 @@
         ],
         "createdAt": "2026-11-01T01:05:29.512Z",
         "reason": "Claude: #palPop/#fwPop are elevated popovers (absolute, shown on demand) anchored inside the Home card, not nested cards; verified by removing them -> 0 findings"
+      },
+      {
+        "rule": "radial-halo",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/pill-v3.html"
+        ],
+        "createdAt": "2026-11-03T02:11:09.180Z",
+        "reason": "user requested the blue-purple aura glow in the pill animation spec"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/pill-v3.html"
+        ],
+        "createdAt": "2026-11-03T02:11:09.473Z",
+        "reason": "throwaway mockup already approved by the user; tiny swatches and scaled pills are not shipped UI"
+      },
+      {
+        "rule": "dark-glow",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/features-v1.html"
+        ],
+        "createdAt": "2026-11-03T02:58:01.030Z",
+        "reason": "Circle to Search edge glow mirrors Google's own effect, which the user asked to follow"
+      },
+      {
+        "rule": "pulsing-dot",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/features-v1.html"
+        ],
+        "createdAt": "2026-11-03T02:58:21.322Z",
+        "reason": "the dot marks live screen sharing, which is genuinely live"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/features-v1.html"
+        ],
+        "createdAt": "2026-11-03T02:58:21.744Z",
+        "reason": "throwaway mockup page, small keycaps and chips are not shipped UI"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".superpowers/brainstorm/1878-1793670620/content/live-orb-v1.html"
+        ],
+        "createdAt": "2026-11-03T03:49:52.615Z",
+        "reason": "superseded throwaway mockup (v4 approved); not shipped UI"
       }
     ]
   }
