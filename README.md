@@ -1,7 +1,21 @@
-# Pad Companion
+<p align="center"><img src="site/assets/pad.png" alt="Stadia controller" width="320"></p>
 
-A light, good-looking Windows companion for the Google Stadia controller. Plug it in or pair it over
-Bluetooth and every game, Steam, Epic and EA launcher sees one Xbox 360 controller.
+<h1 align="center">Pad Companion</h1>
+
+<p align="center"><b>Give your Google Stadia controller a second life on Windows.</b><br>
+Plug it in or pair it over Bluetooth, and every game, Steam, Epic and EA launcher sees one Xbox 360 controller.</p>
+
+<p align="center">
+  <a href="https://github.com/Eiza-1/stadia-pad-companion/releases/latest"><img alt="Download" src="https://img.shields.io/github/v/release/Eiza-1/stadia-pad-companion?label=Download&style=for-the-badge&color=FF4C1D"></a>
+  <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4?style=for-the-badge&logo=windows">
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge"></a>
+  <a href="https://github.com/Eiza-1/stadia-pad-companion/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/Eiza-1/stadia-pad-companion?style=for-the-badge"></a>
+</p>
+
+<p align="center"><a href="https://github.com/Eiza-1/stadia-pad-companion/releases/latest"><b>⬇ Download the installer</b></a> · free, no account, built in Rust</p>
+
+> Stadia shut down, but the controller is still great. If Pad Companion saved yours from a drawer, a ⭐ helps other
+> Stadia owners find it.
 
 ## What it does
 
@@ -18,6 +32,8 @@ Bluetooth and every game, Steam, Epic and EA launcher sees one Xbox 360 controll
 - **Gemini overlay.** Press Assistant over any app: tap to type with the pad (the Orbit rail keyboard), hold to
   talk and let go to send. Short answers appear at the bottom of the screen and fade on their own, or can be read
   aloud. Uses your own free Gemini key (Other settings › Gemini), saved only on your PC.
+- **Gemini Live.** Double-tap Assistant to talk with Gemini in real time. It can see your game if you share the
+  screen, and it appears in a liquid-glass panel (Light glass, Frosted glass or Nearly solid).
 - **Tray menu.** Right-click the tray icon for the pad, its connection and battery, Open, Settings, Start with
   Windows and Quit.
 - **Costs nothing in the background.** A Rust core with no busy loops. The window is destroyed when you close it,
@@ -60,3 +76,7 @@ cd app/src-tauri && cargo tauri build   # installer in target/release/bundle/nsi
 ```
 
 Settings and the log live in `%LOCALAPPDATA%\PadCompanion`.
+
+## License
+
+[MIT](LICENSE). Not affiliated with Google. Stadia is a trademark of Google LLC.
