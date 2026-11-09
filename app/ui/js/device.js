@@ -14,7 +14,7 @@ const $ = (id) => document.getElementById(id);
 
 /** The support site (site/ in the repo, published to GitHub Pages): bug reports and feature requests
  *  become GitHub issues there. The app's details ride along so the report form is pre-filled. */
-const SUPPORT_SITE = "https://eiza-1.github.io/pad-companion/";
+const SUPPORT_SITE = "https://eiza-1.github.io/stadia-pad-companion/";
 let appVersion = "";
 appInfo().then((i) => (appVersion = i?.version || "")).catch(() => {});
 function supportUrl() {

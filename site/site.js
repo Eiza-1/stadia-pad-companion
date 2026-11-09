@@ -3,7 +3,7 @@
 
 /** Fallback when the site isn't served from GitHub Pages: "owner/repo". On <owner>.github.io/<repo>/
  *  the repository is read from the address, so this only matters for other hosts. */
-const REPO = "eiza-1/pad-companion";
+const REPO = "Eiza-1/stadia-pad-companion";
 
 /** GitHub keeps pre-filled links under ~8 KB; longer reports are copied instead. */
 const MAX_URL = 7500;
