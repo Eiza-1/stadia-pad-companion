@@ -110,7 +110,68 @@ input:not([type="radio"]):focus, textarea:focus { outline: none; border-color: v
 .banner { display: flex; gap: 12px; align-items: center; margin-top: 16px; padding: 12px 16px; border-radius: 18px; background: color-mix(in srgb, var(--error) 14%, var(--sc)); color: var(--error); font: 500 13.5px/1.45 var(--font); }
 .foot { text-align: center; padding: 0 16px 28px; color: color-mix(in srgb, var(--on-sv) 70%, transparent); font: 400 12px var(--font); }
 
+/* browser surfaces */
+::selection { background: color-mix(in srgb, var(--primary) 38%, transparent); color: var(--on-surface); }
+html { scrollbar-color: var(--sc-highest) var(--sc-lowest); }
+input, textarea { caret-color: var(--primary); }
+a { text-underline-offset: 3px; }
+.nw { white-space: nowrap; }
+kbd { display: inline-block; padding: 1px 7px; border-radius: 7px; background: var(--sc-highest); color: var(--on-surface); font: 600 12.5px var(--font); }
+
+/* download page */
+main.wide { width: min(1040px, 100% - 32px); }
+h2 { margin: 0 0 14px; font: 600 22px var(--font); font-stretch: 110%; letter-spacing: -.2px; text-wrap: balance; }
+.get { display: grid; grid-template-columns: 1.05fr 1fr; align-items: center; gap: 24px; padding: 28px 0 56px; }
+.get h1 { display: block; font-size: clamp(34px, 5vw, 52px); line-height: 1.04; letter-spacing: -.8px; font-stretch: 116%; margin-bottom: 16px; text-wrap: balance; }
+.get .lede { font-size: 16px; margin-bottom: 28px; }
+.get-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.btn.xl { height: 60px; padding: 0 30px 0 24px; font-size: 17px; gap: 10px; border-radius: 99px;
+  box-shadow: 0 12px 26px -8px rgba(0, 0, 0, .7); transition: border-radius .4s var(--spring), filter .2s, box-shadow .3s var(--emph), transform .4s var(--spring); }
+.btn.xl .ms { font-size: 24px; }
+.btn.xl:hover { border-radius: 20px; transform: translateY(-2px); box-shadow: 0 18px 34px -10px rgba(0, 0, 0, .75); }
+.btn.xl:active { transform: translateY(0) scale(.98); }
+.meta { margin: 0; color: var(--on-sv); font: 500 13px var(--font); font-variant-numeric: tabular-nums; }
+.minor { margin: 22px 0 0; display: flex; flex-wrap: wrap; gap: 8px; color: var(--on-sv); font: 400 13.5px var(--font); }
+.get-pad { text-align: center; }
+.get-pad img { width: 100%; max-width: 500px; height: auto; filter: drop-shadow(0 34px 44px rgba(0, 0, 0, .6)); animation: float 6s ease-in-out infinite; }
+.get-copy { animation: rise .6s var(--emph) both; }
+.get-pad { animation: rise .8s .08s var(--emph) both; }
+
+.steps-card { margin-bottom: 56px; }
+.steps { list-style: none; margin: 6px 0 22px; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 26px; counter-reset: step; }
+.steps li { counter-increment: step; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.steps li::before { content: counter(step); display: grid; place-items: center; width: 34px; height: 34px; margin-bottom: 6px; border-radius: 12px;
+  background: var(--pc); color: var(--on-pc); font: 700 15px var(--font); }
+.steps b { font: 600 16px var(--font); }
+.steps li > span { color: var(--on-sv); font: 400 14px/1.55 var(--font); }
+.steps .btn { margin-top: 8px; }
+.note b { font-weight: 600; }
+
+.feats { margin-bottom: 56px; }
+.limits.two { display: grid; grid-template-columns: 1fr 1fr; column-gap: 40px; row-gap: 4px; }
+.limits.two dd { max-width: 52ch; }
+
+.help { display: flex; align-items: center; justify-content: space-between; gap: 20px 32px; flex-wrap: wrap; padding: 26px 30px; border-radius: 32px;
+  background: color-mix(in srgb, var(--pc) 34%, var(--sc)); }
+.help h2 { margin-bottom: 4px; }
+.help .lede { margin: 0; }
+.help-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.help-actions .btn.tonal { height: 42px; padding: 0 22px; }
+
+@media (max-width: 860px) {
+  .get { grid-template-columns: 1fr; padding-top: 8px; }
+  .get-pad { order: -1; }
+  .get-pad img { max-width: 340px; }
+  .steps, .limits.two { grid-template-columns: 1fr; }
+  .steps { gap: 22px; }
+}
 @media (max-width: 640px) {
+  .get-cta, .btn.xl { width: 100%; }
+  .btn.xl { justify-content: center; }
+  .help { padding: 22px 18px; border-radius: 26px; }
+  .bar .brand { margin-right: auto; }
+  .tabs { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -14px; padding: 0 14px; }
+  .tabs a { white-space: nowrap; }
   .choices, .grid3 { grid-template-columns: 1fr; }
   .card { padding: 22px 18px; border-radius: 26px; }
   .tabs a { padding: 8px 10px; }

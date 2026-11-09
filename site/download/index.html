@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Download Pad Companion</title>
+  <meta name="description" content="Free Windows app for the Google Stadia controller. Works as an Xbox 360 controller over USB and Bluetooth, with rumble, remapping and Gemini on the Assistant button.">
+  <meta property="og:title" content="Pad Companion: your Stadia controller, back in every game">
+  <meta property="og:description" content="Free Windows app that turns the Google Stadia controller into an Xbox 360 controller over USB and Bluetooth.">
+  <meta property="og:image" content="https://eiza-1.github.io/stadia-pad-companion/assets/pad.png">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="../assets/stadia.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,wdth,wght@8..144,25..151,100..1000&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block">
+  <link rel="stylesheet" href="../site.css">
+</head>
+<body class="dl">
+  <div class="amb" aria-hidden="true"><b></b><b></b><img class="logo" src="../assets/stadia.svg" alt=""></div>
+
+  <header class="bar">
+    <a class="brand" href="./"><img src="../assets/stadia.svg" alt="">Pad Companion</a>
+    <nav class="tabs" aria-label="Sections">
+      <a class="on" href="./" aria-current="page"><span class="ms">download</span>Download</a>
+      <a href="../#bug"><span class="ms">bug_report</span>Report a bug</a>
+      <a href="../#feature"><span class="ms">lightbulb</span>Suggest a feature</a>
+      <a href="../#limits"><span class="ms">info</span>Known limits</a>
+    </nav>
+    <a class="all" data-repo-link="" href="https://github.com/Eiza-1/stadia-pad-companion" target="_blank" rel="noopener"><span class="ms">star</span>Star on GitHub</a>
+  </header>
+
+  <main class="wide">
+    <section class="get" aria-labelledby="h-get">
+      <div class="get-copy">
+        <h1 id="h-get">Your Stadia controller, back in every game.</h1>
+        <p class="lede">Pad Companion is a free Windows app that makes the Google Stadia controller work as an Xbox&nbsp;360 controller, over the USB cable or Bluetooth. Steam, Epic, EA and every game see it straight away.</p>
+        <div class="get-cta">
+          <a class="btn xl" id="dlBtn" href="https://github.com/Eiza-1/stadia-pad-companion/releases/latest">
+            <span class="ms">download</span><span id="dlLabel">Download for Windows</span>
+          </a>
+          <p class="meta" id="dlMeta" aria-live="polite">Free · Windows 10 and 11 · 64-bit</p>
+        </div>
+        <p class="minor">
+          <a id="notesLink" href="https://github.com/Eiza-1/stadia-pad-companion/releases/latest" target="_blank" rel="noopener">Release notes</a>
+          <span aria-hidden="true">·</span>
+          <a data-repo-link="" href="https://github.com/Eiza-1/stadia-pad-companion" target="_blank" rel="noopener">Source code</a>
+          <span aria-hidden="true">·</span>
+          <span>MIT license</span>
+        </p>
+      </div>
+      <div class="get-pad"><img src="../assets/pad.png" alt="The Google Stadia Controller" width="640" height="431"></div>
+    </section>
+
+    <section class="card steps-card" aria-labelledby="h-steps">
+      <h2 id="h-steps">Set up in three steps</h2>
+      <ol class="steps">
+        <li>
+          <b>Install ViGEmBus</b>
+          <span>The free driver that lets games see an Xbox controller. Required.</span>
+          <a class="btn tonal" href="https://github.com/nefarius/ViGEmBus/releases/latest" target="_blank" rel="noopener"><span class="ms">open_in_new</span>Get ViGEmBus</a>
+        </li>
+        <li>
+          <b>Install HidHide</b>
+          <span>Hides the Stadia pad itself from games, so nothing reads it twice. Recommended.</span>
+          <a class="btn tonal" href="https://github.com/nefarius/HidHide/releases/latest" target="_blank" rel="noopener"><span class="ms">open_in_new</span>Get HidHide</a>
+        </li>
+        <li>
+          <b>Run the Pad Companion installer</b>
+          <span>Then plug in the pad, or pair it: hold <span class="nw"><kbd>Stadia</kbd> + <kbd>Y</kbd></span> for 2 seconds and add it in Windows Settings › Bluetooth &amp; devices.</span>
+        </li>
+      </ol>
+      <div class="note"><span class="ms">shield</span><span>The installer isn't code-signed yet, so Windows SmartScreen may warn you. Click <b>More info</b>, then <b>Run anyway</b>. The installer checks for ViGEmBus and HidHide and offers their official pages if either is missing.</span></div>
+    </section>
+
+    <section class="feats" aria-labelledby="h-feats">
+      <h2 id="h-feats">What it does</h2>
+      <dl class="limits two">
+        <div><dt><span class="ms">cable</span>USB and Bluetooth</dt><dd>One Xbox 360 controller to every game, whichever way the pad is connected. If both are, USB wins.</dd></div>
+        <div><dt><span class="ms">auto_awesome</span>Gemini on the Assistant button</dt><dd>Type with the pad, hold to talk, or double-tap for Gemini Live, which can see your game. Uses your own free key.</dd></div>
+        <div><dt><span class="ms">vibration</span>Rumble that feels right</dt><dd>Games' Xbox vibration is translated for the Stadia pad's two motors, with three profiles and a strength setting.</dd></div>
+        <div><dt><span class="ms">tune</span>Make it yours</dt><dd>Button mapping, dead zones, response curves, trigger ranges, hair trigger and profiles.</dd></div>
+        <div><dt><span class="ms">photo_camera</span>Capture that works</dt><dd>Tap for a screenshot, hold to record, with Xbox Game Bar, Steam, NVIDIA or AMD.</dd></div>
+        <div><dt><span class="ms">bolt</span>Light on your PC</dt><dd>A Rust core with no busy loops: about 8 MB of memory and no CPU while idle.</dd></div>
+      </dl>
+    </section>
+
+    <section class="help" aria-labelledby="h-help">
+      <div>
+        <h2 id="h-help">Stuck, or have an idea?</h2>
+        <p class="lede">Every report becomes a ticket that's tracked until it's fixed or shipped.</p>
+      </div>
+      <div class="help-actions">
+        <a class="btn" href="../#bug"><span class="ms">bug_report</span>Report a bug</a>
+        <a class="btn tonal" href="../#feature"><span class="ms">lightbulb</span>Suggest a feature</a>
+        <a class="btn text" href="../#limits">Known limits</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">Pad Companion is an independent app for the Google Stadia Controller. Stadia is a trademark of Google LLC.</footer>
+  <script src="download.js"></script>
+</body>
+</html>
